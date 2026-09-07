@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Yankees Live Dashboard</title>
+  <meta name="theme-color" content="#0c2340" />
+  <style>
+    :root{
+      --navy:#0c2340;
+      --navy2:#132448;
+      --blue:#1c3f75;
+      --red:#c51b31;
+      --ink:#edf3ff;
+      --muted:#9fb0c9;
+      --card:rgba(17,34,65,.92);
+      --line:rgba(255,255,255,.10);
+      --good:#35d07f;
+      --bad:#ff6878;
+      --shadow:0 18px 50px rgba(0,0,0,.28);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background:
+        radial-gradient(circle at 20% 0%,rgba(31,83,150,.35),transparent 32rem),
+        linear-gradient(160deg,#071225 0%,#0b1830 45%,#050b16 100%);
+      color:var(--ink);
+      min-height:100vh;
+    }
+    .wrap{max-width:1180px;margin:auto;padding:18px}
+    .topbar{
+      display:flex;align-items:center;justify-content:space-between;gap:16px;
+      padding:18px 20px;border:1px solid var(--line);border-radius:24px;
+      background:linear-gradient(135deg,rgba(19,36,72,.95),rgba(7,18,37,.95));
+      box-shadow:var(--shadow);position:sticky;top:10px;z-index:10;
+      backdrop-filter:blur(14px)
+    }
+    .brand{display:flex;align-items:center;gap:14px}
+    .logo{
+      width:58px;height:58px;border-radius:50%;background:white;padding:6px;
+      box-shadow:0 0 0 3px rgba(255,255,255,.08)
+    }
+    h1{font-size:clamp(22px,4vw,34px);margin:0;letter-spacing:.03em}
+    .sub{color:var(--muted);font-size:13px;margin-top:2px}
+    .live-pill{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+      padding:8px 11px;border-radius:999px;background:rgba(53,208,127,.14);color:#7bf2ad;border:1px solid rgba(53,208,127,.25)}
+    .game-weather{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;
+      margin:14px auto 0;padding:10px 14px;border-radius:14px;background:rgba(255,255,255,.055);
+      border:1px solid var(--line);font-size:13px;max-width:620px}
+    .weather-temp{font-size:21px;font-weight:900}
+    .weather-alert{color:#ffd27a;font-weight:800}
+    .grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-top:16px}
+    .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px}
+    .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:16px}
+    .card{
+      border:1px solid var(--line);border-radius:22px;background:var(--card);
+      box-shadow:var(--shadow);overflow:hidden
+    }
+    .pad{padding:20px}
+    .card h2{font-size:14px;text-transform:uppercase;letter-spacing:.14em;margin:0 0 15px;color:#b9c7db}
+    .scorebox{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px}
+    .team{text-align:center}
+    .team img{width:76px;height:76px;object-fit:contain;background:#fff;border-radius:18px;padding:9px;box-shadow:0 4px 16px rgba(0,0,0,.25);border:1px solid rgba(0,0,0,.10)}
+    .team .name{font-weight:800;margin-top:6px}
+    .score{font-size:clamp(42px,8vw,72px);font-weight:900;line-height:.9}
+    .vs{text-align:center;color:var(--muted);font-weight:700}
+    .status{text-align:center;margin-top:16px;font-weight:700}
+    .status small{display:block;color:var(--muted);font-weight:500;margin-top:4px}
+    .judge{
+      background:
+        linear-gradient(135deg,rgba(12,35,64,.2),rgba(197,27,49,.14)),
+        var(--card);
+    }
+    .judge-row{display:flex;gap:16px;align-items:center}
+    .judge-photo{width:112px;height:112px;border-radius:18px;object-fit:cover;background:#0a1428}
+    .judge-name{font-size:28px;font-weight:900;line-height:1}
+    .judge-number{color:#ff6c7d;font-weight:900;margin-top:5px}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px}
+    .stat{padding:12px 8px;text-align:center;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid var(--line)}
+    .stat b{font-size:23px;display:block}.stat span{font-size:11px;color:var(--muted)}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{padding:10px 7px;border-bottom:1px solid var(--line);text-align:right}
+    th:first-child,td:first-child{text-align:left}
+    tr.yanks{background:rgba(255,255,255,.045);font-weight:800}
+    .list{display:grid;gap:10px}
+    .game-row,.leader{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;
+      padding:12px;border-radius:15px;background:rgba(255,255,255,.035);border:1px solid var(--line)
+    }
+    .game-row strong,.leader strong{font-size:14px}
+    .tiny{font-size:12px;color:var(--muted)}
+    .badge{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:800;background:rgba(255,255,255,.08)}
+    .win{color:#70eba1}.loss{color:#ff7a8a}
+
+
+    .top-player{display:grid;grid-template-columns:minmax(210px,1.3fr) 2fr;gap:16px;align-items:center;padding:14px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid var(--line)}
+    .top-player-main{display:flex;align-items:center;gap:12px;min-width:0}
+    .top-rank{font-size:20px;font-weight:900;width:28px;text-align:center}
+    .top-player-name{font-size:16px;font-weight:900}
+    .top-stat-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px}
+    .top-stat{padding:8px 5px;border-radius:10px;background:rgba(255,255,255,.055);border:1px solid var(--line);text-align:center}
+    .top-stat b{display:block;font-size:15px}.top-stat span{font-size:9px;color:var(--muted);font-weight:800;letter-spacing:.04em}
+
+    .promo{
+      display:flex;align-items:center;justify-content:space-between;gap:14px;
+      padding:14px;border-radius:16px;background:rgba(255,255,255,.045);
+      border:1px solid var(--line)
+    }
+    .promo-main{display:flex;align-items:center;gap:12px;min-width:0}
+    .promo-icon{
+      width:46px;height:46px;flex:0 0 auto;border-radius:13px;background:#fff;color:#0c2340;
+      display:grid;place-items:center;font-size:24px;box-shadow:0 3px 10px rgba(0,0,0,.22)
+    }
+    .promo-title{font-weight:800;font-size:14px}
+    .promo-date{font-size:12px;color:var(--muted);margin-top:3px}
+    .promo-count{font-size:11px;font-weight:800;text-align:right;color:#d6e3f7}
+
+
+    .feature-grid{display:grid;grid-template-columns:1fr;gap:16px;margin-top:16px}
+    .lineup-row,.injury-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 0;border-bottom:1px solid var(--line)}
+    .lineup-row:last-child,.injury-row:last-child{border-bottom:0}
+    .player-left{display:flex;align-items:center;gap:10px;min-width:0}
+    .player-head{width:38px;height:38px;border-radius:50%;object-fit:cover;background:#fff;flex:0 0 auto}
+    .order-badge{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:900;background:rgba(255,255,255,.08);flex:0 0 auto}
+
+    .live-statline{display:grid;grid-template-columns:repeat(7,minmax(48px,1fr));gap:7px;min-width:450px}
+    .live-stat{font-size:12px;font-weight:900;padding:8px 7px;border-radius:10px;background:rgba(255,255,255,.07);border:1px solid var(--line);text-align:center;white-space:nowrap}
+
+    .playoff-status{font-size:14px;font-weight:800;margin:10px 0 12px}
+    .mode-banner{margin-top:12px;padding:10px 14px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.045);font-size:12px;font-weight:800;letter-spacing:.04em}
+    .mode-live{box-shadow:0 0 0 2px rgba(53,208,127,.35),var(--shadow)}
+    .mode-pregame{box-shadow:0 0 0 2px rgba(255,210,122,.28),var(--shadow)}
+    .mode-postgame{box-shadow:0 0 0 2px rgba(150,180,230,.25),var(--shadow)}
+
+    .footer{padding:18px 4px 10px;color:#8293ac;text-align:center;font-size:11px}
+    .error{color:#ff9aaa;font-size:13px}
+    .loading{opacity:.6}
+    button{
+      appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.06);
+      color:white;padding:9px 12px;border-radius:12px;font-weight:700;cursor:pointer
+    }
+    button:hover{background:rgba(255,255,255,.1)}
+    .mini-team-logo{
+      width:42px;height:42px;object-fit:contain;background:#fff;border-radius:12px;
+      padding:5px;box-shadow:0 3px 10px rgba(0,0,0,.22);border:1px solid rgba(0,0,0,.10)
+    }
+    @media(max-width:860px){
+      .grid,.grid-3,.grid-4,.feature-grid{grid-template-columns:1fr}
+      .topbar{position:relative;top:0}
+    }
+    @media(max-width:520px){
+      .wrap{padding:10px}.topbar{padding:14px;border-radius:18px}
+      .logo{width:48px;height:48px}
+      .pad{padding:16px}.card{border-radius:18px}
+      .team img{width:58px;height:58px;padding:7px;border-radius:15px}
+      .stats{grid-template-columns:repeat(2,1fr)}
+      .judge-photo{width:88px;height:88px}.judge-name{font-size:23px}
+      .lineup-row{align-items:flex-start;flex-direction:column}
+      .top-player{grid-template-columns:1fr}
+      .top-stat-grid{grid-template-columns:repeat(4,1fr)}
+      .live-statline{grid-template-columns:repeat(3,1fr);min-width:0;width:100%}
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <div class="brand">
+      <img class="logo" src="https://www.mlbstatic.com/team-logos/147.svg" alt="Yankees logo">
+      <div>
+        <h1>YANKEES LIVE</h1>
+        <div class="sub">New York Yankees • Live MLB Dashboard • <span id="refreshRateText">Auto-refreshes every 15 minutes</span></div>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div class="live-pill">● Live Data</div>
+      <div class="sub" id="updated">Loading…</div>
+      <button id="refreshBtn" style="margin-top:7px">Refresh</button>
+    </div>
+  </header>
+  <div id="gameAwareStatus" class="mode-banner">⚾ Game-aware mode loading…</div>
+
+  <section class="grid" id="mainGameSection">
+    <div class="card">
+      <div class="pad">
+        <h2>Current / Next Yankees Game</h2>
+        <div id="mainGame" class="loading">Loading game…</div>
+        <div id="gameWeather" class="game-weather loading">🌤️ Loading game-time weather…</div>
+        <div id="scoutingReport" style="margin-top:14px;padding:15px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid var(--line)">
+          <div style="font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.10em">SCOUTING REPORT</div>
+          <div class="tiny" style="margin-top:7px">Loading matchup analysis…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card judge">
+      <div class="pad">
+        <h2>Aaron Judge Tracker</h2>
+        <div class="judge-row">
+          <img class="judge-photo" src="https://img.mlbstatic.com/mlb-photos/image/upload/w_300,q_auto:best/v1/people/592450/headshot/67/current" alt="Aaron Judge">
+          <div>
+            <div class="judge-name">Aaron Judge</div>
+            <div class="judge-number">#99 • RF</div>
+            <div class="tiny" id="judgeSeason">2026 Season</div>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat"><b id="jHR">—</b><span>HOME RUNS</span></div>
+          <div class="stat"><b id="jRBI">—</b><span>RBI</span></div>
+          <div class="stat"><b id="jAVG">—</b><span>AVG</span></div>
+          <div class="stat"><b id="jOPS">—</b><span>OPS</span></div>
+        </div>
+        <div id="judgeStatus" style="margin-top:14px;padding:13px;border-radius:15px;background:rgba(255,255,255,.055);border:1px solid var(--line)">
+          <div style="font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.10em">CURRENT STATUS</div>
+          <div style="margin-top:5px;font-weight:800">🩹 60-Day IL — Right rib stress fracture</div>
+          <div class="tiny" style="margin-top:5px;line-height:1.45">Taking on-field batting practice and ramping up baseball activities. Possible return during the homestand beginning Sept. 8.</div>
+        </div>
+        <div style="margin-top:14px;padding:15px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid var(--line)">
+          <div style="font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.10em">🏥 YANKEES INJURY REPORT</div>
+          <div id="injuryReport" class="loading" style="margin-top:7px">Loading injury report…</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid" id="pregameFeatures" style="grid-template-columns:1fr">
+    <div class="card"><div class="pad">
+      <h2>⚾ Today’s Yankees Starting Lineup</h2>
+      <div id="startingLineup" class="loading">Checking today’s lineup…</div>
+    </div></div>
+  </section>
+
+  <section class="grid" style="grid-template-columns:1fr">
+    <div class="card"><div class="pad">
+      <h2>⭐ Top 5 Yankees Players — Overall Season Performance</h2>
+      <div id="topYankees" class="list loading">Loading Yankees leaders…</div>
+      <div class="tiny" style="margin-top:12px">Live ranking uses a balanced hitting score based on OPS, home runs, RBI, runs and stolen bases. Players with very limited playing time are excluded.</div>
+    </div></div>
+  </section>
+
+  <section class="grid-3" id="standingsAndSchedule">
+    <div style="display:grid;gap:16px">
+      <div class="card"><div class="pad">
+        <h2>AL East Standings</h2>
+        <div id="standings" class="loading">Loading standings…</div>
+      </div></div>
+      <div class="card"><div class="pad">
+        <h2>AL West Standings</h2>
+        <div id="standingsWest" class="loading">Loading standings…</div>
+      </div></div>
+    </div>
+
+    <div class="card"><div class="pad">
+      <h2>Last 7 Yankees Games</h2>
+      <div id="recent" class="list loading">Loading results…</div>
+    </div></div>
+
+    <div class="card"><div class="pad">
+      <h2>Next 7 Yankees Games</h2>
+      <div id="upcoming" class="list loading">Loading schedule…</div>
+    </div></div>
+  </section>
+
+  <section class="grid" style="grid-template-columns:1fr 1fr">
+    <div class="card"><div class="pad">
+      <h2>🎁 Upcoming Yankees Giveaways & Promotions</h2>
+      <div id="promotions" class="list"></div>
+      <div class="tiny" style="margin-top:12px">
+        Giveaways are while supplies last and subject to change.
+        <a href="https://www.mlb.com/yankees/tickets/promotions/schedule" target="_blank" rel="noopener"
+           style="color:#c9ddff">Official Yankees promotions →</a>
+      </div>
+    </div></div>
+
+    <div class="card"><div class="pad">
+      <h2>MLB Home Run Leaders</h2>
+      <div id="leaders" class="list loading">Loading leaders…</div>
+    </div></div>
+  </section>
+
+  <section class="grid" style="grid-template-columns:1fr">
+    <div class="card"><div class="pad">
+      <h2>Yankees Season Snapshot</h2>
+      <div class="stats">
+        <div class="stat"><b id="yWins">—</b><span>WINS</span></div>
+        <div class="stat"><b id="yLosses">—</b><span>LOSSES</span></div>
+        <div class="stat"><b id="yGB">—</b><span>GB</span></div>
+        <div class="stat"><b id="yPct">—</b><span>WIN %</span></div>
+      </div>
+      <div class="tiny" style="margin-top:14px"><span id="refreshFooterText">Data refreshes automatically every 15 minutes.</span> Use the Refresh button anytime for an immediate update.</div>
+    </div></div>
+  </section>
+
+
+
+  <div class="footer">
+    Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.
+  </div>
+</div>
+
+<script>
+const API = "https://statsapi.mlb.com/api/v1";
+const YANKEES = 147;
+const JUDGE = 592450;
+const AL = 103;
+const AL_EAST = 201;
+const AL_WEST = 200;
+const season = new Date().getFullYear();
+let liveGame = false;
+let timer;
+
+const $ = id => document.getElementById(id);
+const logo = id => `https://www.mlbstatic.com/team-logos/${id}.svg`;
+
+async function getJSON(url){
+  const r = await fetch(url, {cache:"no-store"});
+  if(!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+function localTime(iso){
+  return new Date(iso).toLocaleString([], {weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+}
+function teamShort(t){ return t?.team?.name?.replace("New York ","") || t?.team?.name || "TBD"; }
+
+
+const venueWeatherLocations = {
+  "Yankee Stadium": {lat:40.8296, lon:-73.9262, tz:"America/New_York"},
+  "Petco Park": {lat:32.7076, lon:-117.1570, tz:"America/Los_Angeles"},
+  "Angel Stadium": {lat:33.8003, lon:-117.8827, tz:"America/Los_Angeles"},
+  "Target Field": {lat:44.9817, lon:-93.2776, tz:"America/Chicago"},
+  "Chase Field": {lat:33.4455, lon:-112.0667, tz:"America/Phoenix"}
+};
+
+function weatherIcon(code){
+  if(code===0) return "☀️";
+  if([1,2].includes(code)) return "🌤️";
+  if(code===3) return "☁️";
+  if([45,48].includes(code)) return "🌫️";
+  if([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(code)) return "🌧️";
+  if([71,73,75,77,85,86].includes(code)) return "🌨️";
+  if([95,96,99].includes(code)) return "⛈️";
+  return "🌤️";
+}
+function weatherText(code){
+  if(code===0) return "Clear";
+  if([1,2].includes(code)) return "Partly cloudy";
+  if(code===3) return "Cloudy";
+  if([45,48].includes(code)) return "Foggy";
+  if([51,53,55,56,57].includes(code)) return "Drizzle";
+  if([61,63,65,66,67,80,81,82].includes(code)) return "Rain";
+  if([71,73,75,77,85,86].includes(code)) return "Snow";
+  if([95,96,99].includes(code)) return "Thunderstorms";
+  return "Weather";
+}
+async function loadGameWeather(g){
+  const box=$("gameWeather");
+  const venue=g.venue?.name || "";
+  const loc=venueWeatherLocations[venue];
+  if(!loc){
+    box.innerHTML=`🌤️ <span>Game-time weather unavailable for ${venue || "this venue"}.</span>`;
+    box.classList.remove("loading"); return;
+  }
+  const game=new Date(g.gameDate);
+  const daysAway=(game-Date.now())/86400000;
+  if(daysAway > 7){
+    box.innerHTML=`📅 <span>Game-time forecast will appear when the game is within 7 days.</span>`;
+    box.classList.remove("loading"); return;
+  }
+  const date=new Intl.DateTimeFormat("en-CA",{timeZone:loc.tz,year:"numeric",month:"2-digit",day:"2-digit"}).format(game);
+  const hour=Number(new Intl.DateTimeFormat("en-US",{timeZone:loc.tz,hour:"2-digit",hour12:false}).format(game).slice(0,2));
+  const url=`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&hourly=temperature_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=${encodeURIComponent(loc.tz)}&start_date=${date}&end_date=${date}`;
+  try{
+    const w=await getJSON(url);
+    const times=w.hourly?.time||[];
+    let idx=times.findIndex(t=>Number(t.slice(11,13))===hour);
+    if(idx<0) idx=0;
+    const temp=Math.round(w.hourly.temperature_2m[idx]);
+    const feels=Math.round(w.hourly.apparent_temperature[idx]);
+    const rain=Math.round(w.hourly.precipitation_probability[idx]||0);
+    const wind=Math.round(w.hourly.wind_speed_10m[idx]||0);
+    const code=w.hourly.weather_code[idx];
+    box.innerHTML=`${weatherIcon(code)}
+      <span><strong>Game-Time Weather • ${venue}</strong></span>
+      <span class="weather-temp">${temp}°F</span>
+      <span>${weatherText(code)}</span>
+      <span>Feels ${feels}°</span>
+      <span class="${rain>=40?'weather-alert':''}">💧 ${rain}% rain</span>
+      <span>💨 ${wind} mph</span>`;
+  }catch(e){
+    box.innerHTML=`🌤️ <span>Game-time weather temporarily unavailable.</span>`;
+  }
+  box.classList.remove("loading");
+}
+
+
+async function loadScoutingReport(g){
+  const box=$("scoutingReport");
+  try{
+    const yHome=g.teams.home.team.id===YANKEES;
+    const opp=yHome ? g.teams.away.team : g.teams.home.team;
+    const yankeesSide=yHome ? g.teams.home : g.teams.away;
+    const oppSide=yHome ? g.teams.away : g.teams.home;
+
+    const yPitch=yankeesSide.probablePitcher?.fullName || "TBD";
+    const oPitch=oppSide.probablePitcher?.fullName || "TBD";
+
+    // Pull both teams' season records from standings.
+    const standings=await getJSON(`${API}/standings?leagueId=103,104&season=${season}&standingsTypes=regularSeason&hydrate=team`);
+    const records=(standings.records||[]).flatMap(r=>r.teamRecords||[]);
+    const yRec=records.find(r=>r.team.id===YANKEES);
+    const oRec=records.find(r=>r.team.id===opp.id);
+
+    // Pull recent form for both clubs.
+    const gameDate=new Date(g.gameDate);
+    const start=new Date(gameDate); start.setDate(start.getDate()-12);
+    const fmt=d=>d.toISOString().slice(0,10);
+
+    async function recent(teamId){
+      const d=await getJSON(`${API}/schedule?sportId=1&teamId=${teamId}&startDate=${fmt(start)}&endDate=${fmt(gameDate)}&hydrate=team`);
+      const games=(d.dates||[]).flatMap(x=>x.games||[]).filter(x=>x.status?.abstractGameState==="Final").slice(-5);
+      let w=0,l=0;
+      games.forEach(x=>{
+        const side=x.teams.home.team.id===teamId ? x.teams.home : x.teams.away;
+        const other=x.teams.home.team.id===teamId ? x.teams.away : x.teams.home;
+        if((side.score||0)>(other.score||0)) w++; else l++;
+      });
+      return {w,l};
+    }
+
+    const [yr,or]=await Promise.all([recent(YANKEES),recent(opp.id)]);
+
+    let matchup="Even matchup";
+    if(yRec && oRec){
+      const yp=parseFloat(yRec.winningPercentage||0);
+      const op=parseFloat(oRec.winningPercentage||0);
+      if(yp-op>=0.06) matchup="Yankees have the stronger season record";
+      else if(op-yp>=0.06) matchup=`${opp.name} has the stronger season record`;
+    }
+
+    let key="Score first and pressure the opposing bullpen.";
+    if(or.w>=4) key=`Slow down a hot ${opp.name} club early.`;
+    else if(yr.w>=4) key="Keep the current momentum going and attack early in counts.";
+
+    box.innerHTML=`
+      <div style="font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.10em">SCOUTING REPORT</div>
+      <div style="margin-top:9px;font-weight:800">${matchup}</div>
+      <div class="tiny" style="margin-top:7px;line-height:1.55">
+        <strong>Probable pitchers:</strong> Yankees — ${yPitch} • ${opp.name} — ${oPitch}<br>
+        <strong>Recent form:</strong> Yankees ${yr.w}-${yr.l} over last 5 • ${opp.name} ${or.w}-${or.l} over last 5<br>
+        <strong>Season records:</strong> Yankees ${yRec ? `${yRec.wins}-${yRec.losses}` : "—"} • ${opp.name} ${oRec ? `${oRec.wins}-${oRec.losses}` : "—"}<br>
+        <strong>Key to the game:</strong> ${key}
+      </div>`;
+  }catch(e){
+    box.innerHTML=`
+      <div style="font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.10em">SCOUTING REPORT</div>
+      <div class="tiny" style="margin-top:7px">Matchup analysis temporarily unavailable.</div>`;
+  }
+}
+
+async function loadMainGame(){
+  const today = new Date();
+  const start = new Date(today); start.setDate(today.getDate()-1);
+  const end = new Date(today); end.setDate(today.getDate()+7);
+  const fmt=d=>d.toISOString().slice(0,10);
+  const url=`${API}/schedule?sportId=1&teamId=${YANKEES}&startDate=${fmt(start)}&endDate=${fmt(end)}&hydrate=team,linescore,probablePitcher`;
+  const data=await getJSON(url);
+  let games=(data.dates||[]).flatMap(d=>d.games||[]);
+  const rank = g => {
+    const st=(g.status?.abstractGameState||"").toLowerCase();
+    if(st==="live") return 0;
+    if(st==="preview") return 1;
+    return 2;
+  };
+  games.sort((a,b)=>rank(a)-rank(b) || new Date(a.gameDate)-new Date(b.gameDate));
+  let g=games.find(g=>["Live","Preview"].includes(g.status?.abstractGameState)) || games[games.length-1];
+  if(!g){ $("mainGame").innerHTML='<div class="error">No Yankees game found.</div>'; return; }
+
+  liveGame=g.status?.abstractGameState==="Live";
+  applyGameAwareMode(g);
+  loadGameWeather(g);
+  loadScoutingReport(g);
+  const away=g.teams.away, home=g.teams.home;
+  const inning=g.linescore?.currentInningOrdinal ? `${g.linescore.inningState||""} ${g.linescore.currentInningOrdinal}`.trim() : "";
+  const state=g.status?.detailedState || "";
+  const info=liveGame ? `${state}${inning ? " • "+inning : ""}` :
+     (g.status?.abstractGameState==="Preview" ? `${localTime(g.gameDate)} • ${g.venue?.name||""}` : `${state} • ${localTime(g.gameDate)}`);
+
+  $("mainGame").innerHTML=`
+    <div class="scorebox">
+      <div class="team">
+        <img src="${logo(away.team.id)}"><div class="name">${teamShort(away)}</div>
+        <div class="score">${away.score ?? "—"}</div>
+      </div>
+      <div class="vs">${liveGame ? '<span style="color:#71f3a7">LIVE</span>' : 'VS'}</div>
+      <div class="team">
+        <img src="${logo(home.team.id)}"><div class="name">${teamShort(home)}</div>
+        <div class="score">${home.score ?? "—"}</div>
+      </div>
+    </div>
+    <div class="status">${info}
+      <small>${g.seriesDescription || ""}</small>
+    </div>`;
+  $("mainGame").classList.remove("loading");
+}
+
+async function loadJudge(){
+  const url=`${API}/people/${JUDGE}/stats?stats=season&group=hitting&season=${season}`;
+  const data=await getJSON(url);
+  const s=data.stats?.[0]?.splits?.[0]?.stat || {};
+  $("jHR").textContent=s.homeRuns ?? "—";
+  $("jRBI").textContent=s.rbi ?? "—";
+  $("jAVG").textContent=s.avg ?? "—";
+  $("jOPS").textContent=s.ops ?? "—";
+  $("judgeSeason").textContent=`${season} Season • ${s.gamesPlayed ?? "—"} games`;
+}
+
+async function loadStandings(){
+  const data=await getJSON(`${API}/standings?leagueId=${AL}&season=${season}&standingsTypes=regularSeason&hydrate=team,division`);
+
+  function renderDivision(divisionId, targetId){
+    const rec=(data.records||[]).find(r=>r.division?.id===divisionId);
+    const teams=rec?.teamRecords || [];
+    const rows=teams.map((t,i)=>{
+      if(t.team.id===YANKEES){
+        $("yWins").textContent=t.wins;
+        $("yLosses").textContent=t.losses;
+        $("yGB").textContent=t.gamesBack;
+        $("yPct").textContent=t.winningPercentage;
+      }
+      return `<tr class="${t.team.id===YANKEES?'yanks':''}">
+        <td>${i+1}. ${t.team.name.replace("New York ","")}</td>
+        <td>${t.wins}</td><td>${t.losses}</td><td>${t.gamesBack}</td>
+      </tr>`;
+    }).join("");
+    $(targetId).innerHTML=`<table><thead><tr><th>Team</th><th>W</th><th>L</th><th>GB</th></tr></thead><tbody>${rows}</tbody></table>`;
+    $(targetId).classList.remove("loading");
+  }
+
+  renderDivision(AL_EAST, "standings");
+  renderDivision(AL_WEST, "standingsWest");
+}
+
+
+async function loadPlayoffRace(){
+  const box=$("playoffRace");
+  try{
+    const data=await getJSON(`${API}/standings?leagueId=${AL}&season=${season}&standingsTypes=regularSeason&hydrate=team,division`);
+    const records=data.records||[];
+    const teams=records.flatMap(r=>r.teamRecords||[]);
+    const y=teams.find(t=>t.team.id===YANKEES);
+    if(!y) throw new Error("No Yankees standings");
+
+    const divisionWinners=records.map(r=>(r.teamRecords||[])[0]).filter(Boolean)
+      .sort((a,b)=>parseFloat(b.winningPercentage||0)-parseFloat(a.winningPercentage||0));
+    const winnerIds=new Set(divisionWinners.map(t=>t.team.id));
+    const wildCards=teams.filter(t=>!winnerIds.has(t.team.id))
+      .sort((a,b)=>parseFloat(b.winningPercentage||0)-parseFloat(a.winningPercentage||0));
+
+    let seed=null, position="";
+    const divIndex=divisionWinners.findIndex(t=>t.team.id===YANKEES);
+    const wcIndex=wildCards.findIndex(t=>t.team.id===YANKEES);
+    if(divIndex>=0){ seed=divIndex+1; position=`AL Division Leader • Seed #${seed}`; }
+    else if(wcIndex>=0 && wcIndex<3){ seed=4+wcIndex; position=`AL Wild Card #${wcIndex+1} • Seed #${seed}`; }
+    else if(wcIndex>=0){ position=`Outside playoff field • WC #${wcIndex+1}`; }
+    else position="Playoff position unavailable";
+
+    box.innerHTML=`
+      <div class="playoff-status">${position}</div>
+      <div class="stats" style="grid-template-columns:repeat(2,1fr)">
+        <div class="stat"><b>${y.divisionRank ?? "—"}</b><span>AL EAST RANK</span></div>
+        <div class="stat"><b>${y.gamesBack ?? "—"}</b><span>DIVISION GB</span></div>
+        <div class="stat"><b>${y.wildCardRank ?? (wcIndex>=0?wcIndex+1:"—")}</b><span>WILD CARD RANK</span></div>
+        <div class="stat"><b>${y.wildCardGamesBack ?? "—"}</b><span>WC GB</span></div>
+      </div>
+      <div class="tiny" style="margin-top:12px"><strong>If the season ended today:</strong> ${seed ? `Yankees would be AL seed #${seed}.` : "Yankees would be outside the current AL playoff field."}</div>`;
+  }catch(e){
+    box.innerHTML='<div class="tiny">Playoff race data temporarily unavailable.</div>';
+  }
+  box.classList.remove("loading");
+}
+
+async function loadStartingLineup(){
+  const box=$("startingLineup");
+  try{
+    const now=new Date();
+    const date=now.toISOString().slice(0,10);
+    const sched=await getJSON(`${API}/schedule?sportId=1&teamId=${YANKEES}&date=${date}&hydrate=team,linescore`);
+    const games=(sched.dates||[]).flatMap(d=>d.games||[]);
+    if(!games.length){
+      box.innerHTML='<div class="tiny">No Yankees game scheduled today.</div>';
+      box.classList.remove("loading"); return;
+    }
+
+    const g=games[0];
+    const bs=await getJSON(`${API}/game/${g.gamePk}/boxscore`);
+    const yHome=g.teams.home.team.id===YANKEES;
+    const teamBox=yHome ? bs.teams?.home : bs.teams?.away;
+    const players=teamBox?.players || {};
+    const lineup=Object.values(players)
+      .filter(p=>Number(p.battingOrder)>0)
+      .sort((a,b)=>Number(a.battingOrder)-Number(b.battingOrder))
+      .slice(0,9);
+
+    if(!lineup.length){
+      box.innerHTML=`<div class="tiny">Starting lineup has not been posted yet.<br><strong>${localTime(g.gameDate)}</strong></div>`;
+      box.classList.remove("loading"); return;
+    }
+
+    const isLive=g.status?.abstractGameState==="Live";
+    const isFinal=g.status?.abstractGameState==="Final";
+    const gameLabel=isLive ? "LIVE GAME STATS" : (isFinal ? "FINAL GAME STATS" : "TODAY'S LINEUP");
+
+    box.innerHTML=`
+      <div style="margin-bottom:12px;font-size:13px;font-weight:900;letter-spacing:.10em;color:#dbe8ff">${gameLabel}</div>
+      ${lineup.map((p,i)=>{
+        const id=p.person?.id;
+        const pos=p.position?.abbreviation || p.allPositions?.[0]?.abbreviation || "—";
+        const s=p.stats?.batting || {};
+        const liveStats=(isLive||isFinal) ? `
+          <div class="live-statline">
+            <span class="live-stat"><strong style="font-size:16px">${s.atBats ?? 0}</strong><br><span class="tiny">AB</span></span>
+            <span class="live-stat"><strong style="font-size:16px">${s.hits ?? 0}</strong><br><span class="tiny">HITS</span></span>
+            <span class="live-stat"><strong style="font-size:16px">${s.homeRuns ?? 0}</strong><br><span class="tiny">HR</span></span>
+            <span class="live-stat"><strong style="font-size:16px">${s.baseOnBalls ?? 0}</strong><br><span class="tiny">WALKS</span></span>
+            <span class="live-stat"><strong style="font-size:16px">${s.strikeOuts ?? 0}</strong><br><span class="tiny">K</span></span>
+            <span class="live-stat"><strong style="font-size:16px">${s.runs ?? 0}</strong><br><span class="tiny">RUNS</span></span>
+            <span class="live-stat"><strong style="font-size:16px">${s.rbi ?? 0}</strong><br><span class="tiny">RBI</span></span>
+          </div>` : `<div class="tiny">${p.batSide?.description ? "Bats "+p.batSide.description : ""}</div>`;
+
+        return `<div class="lineup-row">
+          <div class="player-left">
+            <div class="order-badge">${i+1}</div>
+            <img class="player-head" src="https://img.mlbstatic.com/mlb-photos/image/upload/w_80,q_auto:best/v1/people/${id}/headshot/67/current" alt="${p.person?.fullName||""}">
+            <div><strong>${p.person?.fullName||"Player"}</strong><div class="tiny">${pos}</div></div>
+          </div>
+          ${liveStats}
+        </div>`;
+      }).join("")}`;
+  }catch(e){
+    box.innerHTML='<div class="tiny">Starting lineup temporarily unavailable.</div>';
+  }
+  box.classList.remove("loading");
+}
+
+async function loadInjuryReport(){
+  const box=$("injuryReport");
+  try{
+    let injuries=[];
+    try{
+      const d=await getJSON(`${API}/injuries?teamId=${YANKEES}&hydrate=person`);
+      injuries=d.injuries || d.people || [];
+    }catch(e){}
+
+    if(!injuries.length){
+      try{
+        const d=await getJSON(`${API}/teams/${YANKEES}/roster?rosterType=40Man&hydrate=person(injuries)`);
+        injuries=(d.roster||[]).flatMap(r=>(r.person?.injuries||[]).map(i=>({...i,person:r.person})));
+      }catch(e){}
+    }
+
+    if(!injuries.length){
+      box.innerHTML='<div class="tiny">No live injury entries were returned by the MLB data feed.</div>';
+      box.classList.remove("loading"); return;
+    }
+
+    box.innerHTML=injuries.slice(0,8).map(i=>{
+      const person=i.person || {};
+      const id=person.id;
+      const name=person.fullName || i.player?.fullName || "Yankees player";
+      const status=i.status || i.type || i.injuryStatus || "Injured";
+      const desc=i.description || i.injury || i.notes || "";
+      return `<div class="injury-row">
+        <div class="player-left">
+          ${id ? `<img class="player-head" src="https://img.mlbstatic.com/mlb-photos/image/upload/w_80,q_auto:best/v1/people/${id}/headshot/67/current" alt="${name}">` : ""}
+          <div><strong>${name}</strong><div class="tiny">${desc || status}</div></div>
+        </div>
+        <span class="badge">${status}</span>
+      </div>`;
+    }).join("");
+  }catch(e){
+    box.innerHTML='<div class="tiny">Injury report temporarily unavailable.</div>';
+  }
+  box.classList.remove("loading");
+}
+
+function applyGameAwareMode(g){
+  const banner=$("gameAwareStatus");
+  const main=$("mainGameSection");
+  const pre=$("pregameFeatures");
+  const stand=$("standingsAndSchedule");
+  [main,pre,stand].forEach(el=>el && el.classList.remove("mode-live","mode-pregame","mode-postgame"));
+
+  const state=g?.status?.abstractGameState || "";
+  if(state==="Live"){
+    banner.innerHTML="🔴 LIVE GAME MODE • Live score and game state are prioritized.";
+    main?.classList.add("mode-live");
+  }else if(state==="Preview"){
+    banner.innerHTML="🟡 PRE-GAME MODE • Lineup, weather and scouting are prioritized.";
+    pre?.classList.add("mode-pregame");
+  }else{
+    banner.innerHTML="🔵 POSTGAME MODE • Final result, standings and playoff race are prioritized.";
+    stand?.classList.add("mode-postgame");
+  }
+}
+
+async function loadRecentUpcoming(){
+  const now=new Date();
+  const past=new Date(now); past.setDate(now.getDate()-20);
+  const future=new Date(now); future.setDate(now.getDate()+20);
+  const fmt=d=>d.toISOString().slice(0,10);
+  const data=await getJSON(`${API}/schedule?sportId=1&teamId=${YANKEES}&startDate=${fmt(past)}&endDate=${fmt(future)}&hydrate=team,linescore`);
+  const games=(data.dates||[]).flatMap(d=>d.games||[]).sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate));
+  const done=games.filter(g=>g.status?.abstractGameState==="Final").slice(-7).reverse();
+  const next=games.filter(g=>g.status?.abstractGameState==="Preview" && new Date(g.gameDate)>=new Date(now.getTime()-6*3600*1000)).slice(0,7);
+
+  $("recent").innerHTML=done.map(g=>{
+    const yHome=g.teams.home.team.id===YANKEES;
+    const y=yHome?g.teams.home:g.teams.away, o=yHome?g.teams.away:g.teams.home;
+    const won=(y.score||0)>(o.score||0);
+    return `<div class="game-row"><div><strong>${won?'W':'L'} ${y.score}-${o.score} vs ${o.team.name.replace("New York ","")}</strong><div class="tiny">${new Date(g.gameDate).toLocaleDateString([], {month:"short",day:"numeric"})}</div></div><span class="badge ${won?'win':'loss'}">${won?'WIN':'LOSS'}</span></div>`;
+  }).join("") || '<div class="tiny">No completed games found.</div>';
+
+  $("upcoming").innerHTML=next.map(g=>{
+    const yHome=g.teams.home.team.id===YANKEES;
+    const o=yHome?g.teams.away:g.teams.home;
+    return `<div class="game-row"><div><strong>${yHome?'vs':'@'} ${o.team.name.replace("New York ","")}</strong><div class="tiny">${localTime(g.gameDate)}</div></div><img src="${logo(o.team.id)}" class="mini-team-logo" alt="${o.team.name} logo"></div>`;
+  }).join("") || '<div class="tiny">No upcoming games found.</div>';
+  $("recent").classList.remove("loading");
+  $("upcoming").classList.remove("loading");
+}
+
+async function loadLeaders(){
+  const url=`${API}/stats?stats=season&group=hitting&season=${season}&playerPool=QUALIFIED&limit=5&sortStat=homeRuns`;
+  const data=await getJSON(url);
+  const splits=data.stats?.[0]?.splits || [];
+  $("leaders").innerHTML=splits.slice(0,5).map((x,i)=>`
+    <div class="leader">
+      <div><strong>${i+1}. ${x.player?.fullName||"Player"}</strong><div class="tiny">${x.team?.name||""}</div></div>
+      <span class="badge">${x.stat?.homeRuns ?? "—"} HR</span>
+    </div>`).join("") || '<div class="tiny">Leader data unavailable.</div>';
+  $("leaders").classList.remove("loading");
+}
+
+
+
+async function loadTopYankees(){
+  const roster = await getJSON(`${API}/teams/${YANKEES}/roster?rosterType=active`);
+  const ids = (roster.roster || []).filter(x => x.position?.type !== "Pitcher").map(x => x.person.id);
+  if(!ids.length){ $("topYankees").innerHTML='<div class="tiny">No player data available.</div>'; return; }
+
+  const stats = await Promise.all(ids.map(async id => {
+    try{
+      const d=await getJSON(`${API}/people/${id}/stats?stats=season&group=hitting&season=${season}`);
+      const split=d.stats?.[0]?.splits?.[0];
+      return split ? {id, name:split.player?.fullName || roster.roster.find(r=>r.person.id===id)?.person.fullName, s:split.stat} : null;
+    }catch(e){ return null; }
+  }));
+
+  const players=stats.filter(Boolean).filter(p => (p.s.plateAppearances || 0) >= 100);
+  // Simple transparent composite for an at-a-glance "overall" offensive ranking.
+  players.forEach(p=>{
+    const s=p.s;
+    p.score=(parseFloat(s.ops)||0)*100 + (s.homeRuns||0)*1.1 + (s.rbi||0)*0.35 + (s.runs||0)*0.25 + (s.stolenBases||0)*0.3;
+  });
+  players.sort((a,b)=>b.score-a.score);
+  const top=players.slice(0,5);
+
+  $("topYankees").innerHTML=top.map((p,i)=>`
+    <div class="top-player">
+      <div class="top-player-main">
+        <div class="top-rank">${i+1}</div>
+        <img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_100,q_auto:best/v1/people/${p.id}/headshot/67/current"
+             alt="${p.name}" style="width:54px;height:54px;border-radius:50%;object-fit:cover;background:#fff">
+        <div>
+          <div class="top-player-name">${p.name}</div>
+          <div class="tiny">${p.s.gamesPlayed||0} games</div>
+        </div>
+      </div>
+      <div class="top-stat-grid">
+        <div class="top-stat"><b>${p.s.hits||0}</b><span>HITS</span></div>
+        <div class="top-stat"><b>${p.s.homeRuns||0}</b><span>HR</span></div>
+        <div class="top-stat"><b>${p.s.rbi||0}</b><span>RBI</span></div>
+        <div class="top-stat"><b>${p.s.runs||0}</b><span>RUNS</span></div>
+        <div class="top-stat"><b>${p.s.avg||"—"}</b><span>AVG</span></div>
+        <div class="top-stat"><b>${p.s.ops||"—"}</b><span>OPS</span></div>
+        <div class="top-stat"><b>${p.s.stolenBases||0}</b><span>SB</span></div>
+      </div>
+    </div>`).join("") || '<div class="tiny">Top-player data unavailable.</div>';
+  $("topYankees").classList.remove("loading");
+}
+
+const yankeesPromotions2026 = [
+  {date:"2026-09-08", icon:"🃏", title:"NARUTO Night — Yankee Stadium Exclusive Card", detail:"First 40,000 guests"},
+  {date:"2026-09-10", icon:"🧢", title:"Yankees + New York or Nowhere Knit Hat Night", detail:"First 18,000 guests"},
+  {date:"2026-09-25", icon:"🏀", title:"Josh Hart Yankees Bobblehead Night", detail:"First 18,000 guests"},
+  {date:"2026-09-26", icon:"5️⃣2️⃣", title:"CC Sabathia Night", detail:"No. 52 retirement & Monument Park plaque"}
+];
+
+function loadPromotions(){
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const promos = yankeesPromotions2026.filter(p => {
+    const [y,m,d] = p.date.split("-").map(Number);
+    return new Date(y,m-1,d) >= today;
+  });
+
+  $("promotions").innerHTML = promos.length ? promos.map(p => {
+    const [y,m,d] = p.date.split("-").map(Number);
+    const dt = new Date(y,m-1,d);
+    const dateText = dt.toLocaleDateString([], {weekday:"short",month:"short",day:"numeric"});
+    return `<div class="promo">
+      <div class="promo-main">
+        <div class="promo-icon">${p.icon}</div>
+        <div>
+          <div class="promo-title">${p.title}</div>
+          <div class="promo-date">${dateText} • Yankee Stadium</div>
+        </div>
+      </div>
+      <div class="promo-count">${p.detail}</div>
+    </div>`;
+  }).join("") : '<div class="tiny">No remaining 2026 Yankees promotions are currently listed.</div>';
+}
+
+async function refreshAll(){
+  $("updated").textContent="Refreshing…";
+  loadPromotions();
+  const jobs=[loadMainGame(),loadJudge(),loadStandings(),loadRecentUpcoming(),loadLeaders(),loadTopYankees(),loadStartingLineup(),loadInjuryReport()];
+  const results=await Promise.allSettled(jobs);
+  if(results.some(r=>r.status==="rejected")) console.warn(results);
+  $("updated").textContent="Updated "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"});
+  clearTimeout(timer);
+  const refreshMs = liveGame ? 60 * 1000 : 15 * 60 * 1000;
+  timer=setTimeout(refreshAll, refreshMs);
+  const rate = liveGame ? "Auto-refreshes every 1 minute during live games" : "Auto-refreshes every 15 minutes";
+  if($("refreshRateText")) $("refreshRateText").textContent=rate;
+  if($("refreshFooterText")) $("refreshFooterText").textContent=liveGame
+    ? "LIVE GAME: Data refreshes automatically every 1 minute."
+    : "Data refreshes automatically every 15 minutes.";
+}
+$("refreshBtn").addEventListener("click",refreshAll);
+refreshAll();
+</script>
+</body>
+</html>
