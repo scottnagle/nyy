@@ -162,7 +162,39 @@
       .top-stat-grid{grid-template-columns:repeat(4,1fr)}
       .live-statline{grid-template-columns:repeat(3,1fr);min-width:0;width:100%}
     }
-  </style>
+  
+@media(max-width:600px){
+ body{overflow-x:hidden}.wrap{padding-left:10px;padding-right:10px}
+ header{gap:10px}h1{font-size:24px;line-height:1.05}h2{font-size:15px;line-height:1.25}
+ .card .pad{padding:13px}.mode-banner{padding:9px 10px;font-size:10px}
+ .lineup-row{gap:10px;padding:11px 0}.player-head{width:42px;height:42px}
+ .live-statline{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;width:100%;min-width:0}
+ .live-stat{padding:7px 3px;font-size:10px;min-width:0}.live-stat strong{font-size:15px!important}
+ .top-player{padding:11px;gap:11px}.top-player-main{gap:9px}.top-rank{font-size:17px;width:22px}
+ .top-player-name{font-size:15px}.top-stat-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+ .top-stat{padding:7px 3px;min-width:0}.top-stat b{font-size:14px}.top-stat span{font-size:8px}
+ .stats{gap:7px}.stat{padding:9px 5px}.stat b{font-size:18px}
+ .game-teams{gap:8px}.team-logo{width:48px;height:48px}.score{font-size:28px}
+}
+@media(max-width:390px){
+ .live-statline{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .top-stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ h1{font-size:21px}.wrap{padding-left:8px;padding-right:8px}
+}
+
+
+/* Starting Lineup: remove unwanted outer gray/square wrapper */
+#pregameFeatures{
+  background:transparent!important;
+  border:0!important;
+  box-shadow:none!important;
+  padding:0!important;
+}
+#pregameFeatures > .card{
+  margin:0;
+}
+
+</style>
 </head>
 <body>
 <div class="wrap">
