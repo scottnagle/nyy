@@ -357,6 +357,141 @@
   .live-stat span,.live-stat .tiny{font-size:7px!important}
 }
 
+
+/* Yankees lineup live/final totals */
+.lineup-totals{
+  display:grid;
+  grid-template-columns:minmax(220px,1.15fr) 1.85fr;
+  gap:18px;
+  align-items:center;
+  margin-top:12px;
+  padding:14px;
+  border-radius:14px;
+  background:rgba(255,255,255,.075);
+  border:1px solid rgba(255,255,255,.16);
+}
+.lineup-totals-label{
+  font-size:15px;
+  font-weight:900;
+  letter-spacing:.06em;
+  color:#fff;
+}
+@media(max-width:600px){
+  .lineup-totals{grid-template-columns:1fr;gap:10px;padding:11px}
+}
+
+
+/* Live Yankees sound + home-run celebration */
+.hr-celebration{
+  display:none;
+  margin:10px 0 0;
+  padding:14px 16px;
+  border-radius:14px;
+  text-align:center;
+  font-size:22px;
+  font-weight:1000;
+  letter-spacing:.08em;
+  color:#fff;
+  background:linear-gradient(90deg,rgba(0,48,135,.95),rgba(196,30,58,.92));
+  border:1px solid rgba(255,255,255,.24);
+}
+.hr-celebration.show{
+  display:block;
+  animation:hrPulse .55s ease-in-out 3;
+}
+@keyframes hrPulse{
+  0%,100%{transform:scale(1)}
+  50%{transform:scale(1.025)}
+}
+#soundBtn.sound-off{opacity:.65}
+@media (prefers-reduced-motion:reduce){
+  .hr-celebration.show{animation:none}
+}
+
+
+/* Live box score above Aaron Judge */
+.right-game-column{
+  display:grid;
+  gap:16px;
+  align-content:start;
+  min-width:0;
+}
+.boxscore-wrap{
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+}
+.boxscore-table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+  min-width:520px;
+  font-size:12px;
+}
+.boxscore-table th,
+.boxscore-table td{
+  padding:8px 7px;
+  text-align:center;
+  border-right:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+  background:rgba(255,255,255,.035);
+}
+.boxscore-table th{
+  color:#dbe8ff;
+  font-size:10px;
+  letter-spacing:.06em;
+  font-weight:900;
+  background:rgba(255,255,255,.065);
+}
+.boxscore-table th:first-child,
+.boxscore-table td:first-child{
+  text-align:left;
+  font-weight:900;
+  position:sticky;
+  left:0;
+  z-index:1;
+  background:#0c1a2a;
+  min-width:100px;
+}
+.boxscore-table tr:first-child th{
+  border-top:1px solid var(--line);
+}
+.boxscore-table th:first-child,
+.boxscore-table td:first-child{
+  border-left:1px solid var(--line);
+}
+.boxscore-table tr:first-child th:first-child{border-top-left-radius:10px}
+.boxscore-table tr:first-child th:last-child{border-top-right-radius:10px}
+.boxscore-status{
+  margin-bottom:9px;
+  font-size:11px;
+  color:var(--muted);
+  font-weight:800;
+  letter-spacing:.04em;
+}
+.boxscore-live{
+  color:#71f3a7;
+  font-weight:900;
+}
+@media(max-width:850px){
+  .right-game-column{gap:12px}
+}
+
+
+.sub-tag{
+  display:inline-block;
+  margin-left:6px;
+  padding:2px 6px;
+  border-radius:6px;
+  font-size:9px;
+  line-height:1.2;
+  letter-spacing:.06em;
+  font-weight:900;
+  vertical-align:middle;
+  color:#dbe8ff;
+  background:rgba(255,255,255,.09);
+  border:1px solid rgba(255,255,255,.16);
+}
+
 </style>
 </head>
 <body>
@@ -372,15 +507,19 @@
     <div style="text-align:right">
       <div class="live-pill">● Live Data</div>
       <div class="sub" id="updated">Loading…</div>
-      <button id="refreshBtn" style="margin-top:7px">Refresh</button>
+      <div style="display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap;margin-top:7px">
+        <button id="soundBtn" type="button">🔊 Sounds On</button>
+        <button id="refreshBtn" type="button">Refresh</button>
+      </div>
     </div>
   </header>
   <div id="gameAwareStatus" class="mode-banner">⚾ Game-aware mode loading…</div>
+  <div id="hrCelebration" class="hr-celebration" aria-live="polite">💥 YANKEES HOME RUN! ⚾</div>
 
   <section class="grid" id="mainGameSection">
     <div class="card">
       <div class="pad">
-        <h2>Current / Next Yankees Game</h2>
+        <h2 id="mainGameHeading">Next Yankees Game</h2>
         <div id="mainGame" class="loading">Loading game…</div>
         <div id="gameWeather" class="game-weather loading">🌤️ Loading game-time weather…</div>
         <div id="scoutingReport" style="margin-top:14px;padding:15px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid var(--line)">
@@ -390,9 +529,17 @@
       </div>
     </div>
 
-    <div class="card judge">
-      <div class="pad">
-        <h2>Aaron Judge Tracker</h2>
+    <div class="right-game-column">
+      <div class="card">
+        <div class="pad">
+          <h2>⚾ Live Box Score</h2>
+          <div id="liveBoxScore" class="loading">Waiting for game data…</div>
+        </div>
+      </div>
+
+      <div class="card judge">
+        <div class="pad">
+          <h2>Aaron Judge Tracker</h2>
         <div class="judge-row">
           <img class="judge-photo" src="https://img.mlbstatic.com/mlb-photos/image/upload/w_300,q_auto:best/v1/people/592450/headshot/67/current" alt="Aaron Judge">
           <div>
@@ -413,6 +560,7 @@
           <div class="tiny" style="margin-top:5px;line-height:1.45"><span id="judgeStatusDetail">Loading current Yankees roster information…</span></div>
         </div>
       </div>
+    </div>
     </div>
   </section>
 <section class="grid" id="pregameFeatures" style="grid-template-columns:1fr">
@@ -508,6 +656,145 @@ const AL_WEST = 200;
 const season = new Date().getFullYear();
 let liveGame = false;
 let timer;
+
+/* ---------- Yankees live sounds ---------- */
+let soundEnabled = localStorage.getItem("yankees-sounds") !== "off";
+let audioCtx = null;
+let pendingScoreSound = null;
+let suppressRunSoundUntil = 0;
+let hrBannerTimer = null;
+
+function getAudioCtx(){
+  if(!audioCtx){
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(AC) audioCtx=new AC();
+  }
+  return audioCtx;
+}
+
+async function unlockAudio(){
+  const ctx=getAudioCtx();
+  if(ctx && ctx.state==="suspended"){
+    try{ await ctx.resume(); }catch(e){}
+  }
+}
+
+function tone(freq,start,duration,gain,type="sine"){
+  const ctx=getAudioCtx();
+  if(!ctx || !soundEnabled || ctx.state!=="running") return;
+  const osc=ctx.createOscillator();
+  const g=ctx.createGain();
+  osc.type=type;
+  osc.frequency.setValueAtTime(freq,ctx.currentTime+start);
+  g.gain.setValueAtTime(0.0001,ctx.currentTime+start);
+  g.gain.exponentialRampToValueAtTime(Math.max(gain,0.001),ctx.currentTime+start+.015);
+  g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+start+duration);
+  osc.connect(g).connect(ctx.destination);
+  osc.start(ctx.currentTime+start);
+  osc.stop(ctx.currentTime+start+duration+.02);
+}
+
+function noiseBurst(start=.0,duration=.18,gain=.12){
+  const ctx=getAudioCtx();
+  if(!ctx || !soundEnabled || ctx.state!=="running") return;
+  const len=Math.max(1,Math.floor(ctx.sampleRate*duration));
+  const buffer=ctx.createBuffer(1,len,ctx.sampleRate);
+  const data=buffer.getChannelData(0);
+  for(let i=0;i<len;i++) data[i]=(Math.random()*2-1)*(1-i/len);
+  const src=ctx.createBufferSource();
+  const filter=ctx.createBiquadFilter();
+  const g=ctx.createGain();
+  src.buffer=buffer;
+  filter.type="bandpass";
+  filter.frequency.value=950;
+  filter.Q.value=.8;
+  g.gain.setValueAtTime(gain,ctx.currentTime+start);
+  g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+start+duration);
+  src.connect(filter).connect(g).connect(ctx.destination);
+  src.start(ctx.currentTime+start);
+}
+
+function playRunCheer(){
+  if(!soundEnabled) return;
+  unlockAudio().then(()=>{
+    noiseBurst(0,.35,.08);
+    tone(392,0,.16,.045,"triangle");
+    tone(523,.12,.18,.05,"triangle");
+    tone(659,.25,.25,.055,"triangle");
+  });
+}
+
+function playHomeRunSound(){
+  if(!soundEnabled) return;
+  unlockAudio().then(()=>{
+    /* short bat-crack effect */
+    noiseBurst(0,.09,.22);
+    tone(135,0,.07,.11,"square");
+    /* stadium-style celebratory rise */
+    tone(392,.12,.20,.06,"triangle");
+    tone(523,.28,.20,.065,"triangle");
+    tone(659,.44,.22,.07,"triangle");
+    tone(784,.62,.42,.075,"triangle");
+    noiseBurst(.18,.95,.055);
+  });
+}
+
+function showHomeRunCelebration(){
+  const el=$("hrCelebration");
+  if(!el) return;
+  el.classList.remove("show");
+  void el.offsetWidth;
+  el.classList.add("show");
+  clearTimeout(hrBannerTimer);
+  hrBannerTimer=setTimeout(()=>el.classList.remove("show"),6500);
+}
+
+function updateSoundButton(){
+  const btn=$("soundBtn");
+  if(!btn) return;
+  btn.textContent=soundEnabled ? "🔊 Sounds On" : "🔇 Sounds Off";
+  btn.classList.toggle("sound-off",!soundEnabled);
+}
+
+function checkYankeesScoreChange(gamePk,score,isLive){
+  if(!gamePk || !Number.isFinite(score)) return;
+  const key=`yankees-last-score-${gamePk}`;
+  const prevRaw=localStorage.getItem(key);
+  localStorage.setItem(key,String(score));
+
+  /* Never play on initial page load or for a game that isn't live. */
+  if(prevRaw===null || !isLive) return;
+
+  const prev=Number(prevRaw);
+  if(score>prev){
+    clearTimeout(pendingScoreSound);
+    pendingScoreSound=setTimeout(()=>{
+      if(Date.now()>=suppressRunSoundUntil) playRunCheer();
+    },1400);
+  }
+}
+
+function checkYankeesHomeRuns(gamePk,hrTotal,isLive){
+  if(!gamePk || !Number.isFinite(hrTotal)) return;
+  const key=`yankees-last-hr-${gamePk}`;
+  const prevRaw=localStorage.getItem(key);
+  localStorage.setItem(key,String(hrTotal));
+
+  /* Never celebrate on initial page load or after the game is already final. */
+  if(prevRaw===null || !isLive) return;
+
+  const prev=Number(prevRaw);
+  if(hrTotal>prev){
+    suppressRunSoundUntil=Date.now()+3500;
+    clearTimeout(pendingScoreSound);
+    playHomeRunSound();
+    showHomeRunCelebration();
+  }
+}
+
+/* Browsers require one user interaction before audio can play. */
+document.addEventListener("pointerdown",unlockAudio,{once:true});
+document.addEventListener("keydown",unlockAudio,{once:true});
 
 function nyDateString(d=new Date()){
   const parts=new Intl.DateTimeFormat("en-CA",{
@@ -672,6 +959,69 @@ function markSectionError(id,msg="Temporarily unavailable"){
   if(el) el.innerHTML=`<div class="tiny">${msg}</div>`;
 }
 
+function renderLiveBoxScore(g){
+  const box=$("liveBoxScore");
+  if(!box || !g) return;
+
+  const state=g.status?.abstractGameState||"";
+  if(state==="Preview"){
+    box.innerHTML=`<div class="tiny">Box score will appear automatically when the game begins.<br><strong>${localTime(g.gameDate)}</strong></div>`;
+    box.classList.remove("loading");
+    return;
+  }
+
+  const ls=g.linescore||{};
+  const innings=ls.innings||[];
+  const maxInning=Math.max(9, ...innings.map(i=>Number(i.num)||0));
+  const inningNums=Array.from({length:maxInning},(_,i)=>i+1);
+
+  const away=g.teams?.away;
+  const home=g.teams?.home;
+  const awayLS=ls.teams?.away||{};
+  const homeLS=ls.teams?.home||{};
+
+  const inningRuns=(side,num)=>{
+    const inn=innings.find(i=>Number(i.num)===num);
+    const val=inn?.[side]?.runs;
+    return val===undefined || val===null ? "—" : val;
+  };
+
+  const stateText=state==="Live"
+    ? `<span class="boxscore-live">● LIVE</span>${ls.currentInningOrdinal ? ` • ${ls.inningState||""} ${ls.currentInningOrdinal}` : ""}`
+    : `${g.status?.detailedState||"Final"}`;
+
+  box.innerHTML=`
+    <div class="boxscore-status">${stateText}</div>
+    <div class="boxscore-wrap">
+      <table class="boxscore-table">
+        <thead>
+          <tr>
+            <th>TEAM</th>
+            ${inningNums.map(n=>`<th>${n}</th>`).join("")}
+            <th>R</th><th>H</th><th>E</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>${teamShort(away)}</td>
+            ${inningNums.map(n=>`<td>${inningRuns("away",n)}</td>`).join("")}
+            <td><strong>${awayLS.runs ?? away?.score ?? 0}</strong></td>
+            <td><strong>${awayLS.hits ?? "—"}</strong></td>
+            <td><strong>${awayLS.errors ?? "—"}</strong></td>
+          </tr>
+          <tr>
+            <td>${teamShort(home)}</td>
+            ${inningNums.map(n=>`<td>${inningRuns("home",n)}</td>`).join("")}
+            <td><strong>${homeLS.runs ?? home?.score ?? 0}</strong></td>
+            <td><strong>${homeLS.hits ?? "—"}</strong></td>
+            <td><strong>${homeLS.errors ?? "—"}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>`;
+  box.classList.remove("loading");
+}
+
 async function loadMainGame(){
   const today = new Date();
   const start = new Date(today); start.setDate(today.getDate()-1);
@@ -724,11 +1074,26 @@ async function loadMainGame(){
   if(!g){ $("mainGame").innerHTML='<div class="error">No Yankees game found.</div>'; return; }
 
   liveGame=g.status?.abstractGameState==="Live";
+
+  const mainHeading=$("mainGameHeading");
+  if(mainHeading){
+    if(liveGame){
+      mainHeading.textContent="Current Yankees Game";
+    }else if(g.status?.abstractGameState==="Final" && recentFinal?.gamePk===g.gamePk){
+      mainHeading.textContent="Final Yankees Game";
+    }else{
+      mainHeading.textContent="Next Yankees Game";
+    }
+  }
+
   applyGameAwareMode(g);
+  renderLiveBoxScore(g);
   loadGameWeather(g);
   loadScoutingReport(g);
   const away=g.teams.away, home=g.teams.home;
   const yankeesHome=home.team.id===YANKEES;
+  const yankeesScore=Number(yankeesHome ? home.score : away.score);
+  checkYankeesScoreChange(g.gamePk,yankeesScore,liveGame);
   const opponent=yankeesHome ? away : home;
   const matchupLabel=yankeesHome
     ? `${teamShort(opponent)} @ Yankees`
@@ -931,6 +1296,18 @@ async function loadPitchingStats(){
   }
 }
 
+function isBoxScoreSubstitute(p){
+  const order=String(p?.battingOrder||"");
+  const slot=Number(order)||0;
+  // MLB battingOrder uses the hundreds digit for the batting slot and the
+  // trailing digits for the sequence in that slot: 100 = starter, 101+ = substitute.
+  if(slot>0 && (slot % 100)>0) return true;
+  // Defensive-only / pinch-run substitutions may have no battingOrder.
+  const s=p?.stats?.batting||{};
+  if(!slot && (Number(s.plateAppearances||0)>0 || Number(s.atBats||0)>0)) return true;
+  return false;
+}
+
 async function loadStartingLineup(){
   const box=$("startingLineup");
   try{
@@ -966,9 +1343,17 @@ async function loadStartingLineup(){
     const teamBox=yHome ? bs.teams?.home : bs.teams?.away;
     const players=teamBox?.players || {};
     const lineup=Object.values(players)
-      .filter(p=>Number(p.battingOrder)>0)
-      .sort((a,b)=>Number(a.battingOrder)-Number(b.battingOrder))
-      .slice(0,9);
+      .filter(p=>{
+        const s=p.stats?.batting||{};
+        return Number(p.battingOrder)>0 ||
+          Number(s.plateAppearances||0)>0 ||
+          Number(s.atBats||0)>0;
+      })
+      .sort((a,b)=>{
+        const ao=Number(a.battingOrder)||9999;
+        const bo=Number(b.battingOrder)||9999;
+        return ao-bo;
+      });
 
     if(!lineup.length){
       box.innerHTML=`<div class="tiny">Starting lineup has not been posted yet.<br><strong>${localTime(g.gameDate)}</strong></div>`;
@@ -977,7 +1362,20 @@ async function loadStartingLineup(){
 
     const isLive=g.status?.abstractGameState==="Live";
     const isFinal=g.status?.abstractGameState==="Final";
-    const gameLabel=isLive ? "LIVE GAME STATS" : (isFinal ? "FINAL GAME STATS • Available for 60 min after game" : "TODAY'S LINEUP");
+    const gameLabel=isLive ? "LIVE GAME STATS • Synced to MLB box score" : (isFinal ? "FINAL GAME STATS • Synced to MLB box score • Available for 60 min after game" : "TODAY'S LINEUP");
+
+    // Use MLB's official team batting totals from this same live box score.
+    // This includes pinch hitters, defensive replacements and other substitutions,
+    // so the totals stay synchronized with the box score.
+    const teamBat=teamBox?.teamStats?.batting||{};
+    const totals={
+      ab:Number(teamBat.atBats||0),
+      h:Number(teamBat.hits||0),
+      hr:Number(teamBat.homeRuns||0),
+      rbi:Number(teamBat.rbi||0)
+    };
+
+    checkYankeesHomeRuns(g.gamePk,totals.hr,isLive);
 
     box.innerHTML=`
       <div style="margin-bottom:12px;font-size:13px;font-weight:900;letter-spacing:.10em;color:#dbe8ff">${gameLabel}</div>
@@ -995,13 +1393,23 @@ async function loadStartingLineup(){
 
         return `<div class="lineup-row">
           <div class="player-left">
-            <div class="order-badge">${i+1}</div>
+            <div class="order-badge">${Number(p.battingOrder)>0 ? Math.max(1,Math.floor(Number(p.battingOrder)/100)) : "SUB"}</div>
             <img class="player-head" src="https://img.mlbstatic.com/mlb-photos/image/upload/w_80,q_auto:best/v1/people/${id}/headshot/67/current" alt="${p.person?.fullName||""}">
-            <div><strong>${p.person?.fullName||"Player"}</strong><div class="tiny">${pos}</div></div>
+            <div><strong>${p.person?.fullName||"Player"}${(isLive||isFinal) && isBoxScoreSubstitute(p) ? ' <span class="sub-tag">SUB</span>' : ""}</strong><div class="tiny">${pos}</div></div>
           </div>
           ${liveStats}
         </div>`;
-      }).join("")}`;
+      }).join("")}
+      ${(isLive||isFinal) ? `
+        <div class="lineup-totals">
+          <div class="lineup-totals-label">YANKEES TOTALS</div>
+          <div class="live-statline">
+            <span class="live-stat"><strong>${totals.ab}</strong><span class="tiny">AB</span></span>
+            <span class="live-stat"><strong>${totals.h}</strong><span class="tiny">H</span></span>
+            <span class="live-stat"><strong>${totals.hr}</strong><span class="tiny">HR</span></span>
+            <span class="live-stat"><strong>${totals.rbi}</strong><span class="tiny">RBI</span></span>
+          </div>
+        </div>` : ""}`;
   }catch(e){
     box.innerHTML='<div class="tiny">Starting lineup temporarily unavailable.</div>';
   }
@@ -1165,6 +1573,18 @@ async function refreshAll(){
     : "Data refreshes automatically every 15 minutes.";
 }
 $("refreshBtn").addEventListener("click",refreshAll);
+$("soundBtn").addEventListener("click",async()=>{
+  soundEnabled=!soundEnabled;
+  localStorage.setItem("yankees-sounds",soundEnabled ? "on" : "off");
+  updateSoundButton();
+  if(soundEnabled){
+    await unlockAudio();
+    /* short confirmation chirp */
+    tone(523,0,.10,.035,"triangle");
+    tone(659,.10,.13,.04,"triangle");
+  }
+});
+updateSoundButton();
 refreshAll();
 </script>
 </body>
