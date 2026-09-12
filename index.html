@@ -649,7 +649,7 @@
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v50</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v52</span>
   </div>
 </div>
 
@@ -1282,9 +1282,33 @@ async function loadPitchingStats(){
     if(!g){ box.innerHTML='<div class="tiny">No Yankees game scheduled today.</div>'; return; }
 
     const state=g.status?.abstractGameState || "";
+
+    // Keep final pitching stats visible for only 60 minutes after this browser
+    // actually sees the game transition from Live -> Final.
+    const pitchingStateKey=`yankees-pitching-state-${g.gamePk}`;
+    const pitchingFinalKey=`yankees-pitching-final-v1-${g.gamePk}`;
+    const previousPitchingState=localStorage.getItem(pitchingStateKey) || "";
+    let pitchingFinalAt=Number(localStorage.getItem(pitchingFinalKey)||0);
+
+    if(state==="Final" && !pitchingFinalAt && previousPitchingState==="Live"){
+      pitchingFinalAt=Date.now();
+      localStorage.setItem(pitchingFinalKey,String(pitchingFinalAt));
+    }
+
+    localStorage.setItem(pitchingStateKey,state);
+
     if(state==="Preview"){
       box.innerHTML='<div class="tiny">Pitching stats will appear when today’s game begins.</div>';
       return;
+    }
+
+    if(state==="Final"){
+      const stillWithinWindow=pitchingFinalAt && (Date.now()-pitchingFinalAt)<=60*60*1000;
+      if(!stillWithinWindow){
+        if(pitchingFinalAt) localStorage.removeItem(pitchingFinalKey);
+        box.innerHTML='<div class="tiny">Final pitching stats are shown for 60 minutes after the game ends.</div>';
+        return;
+      }
     }
 
     const bs=await getJSON(`${API}/game/${g.gamePk}/boxscore`);
@@ -1351,19 +1375,26 @@ async function loadStartingLineup(){
 
     const g=games[0];
 
-    // Keep the lineup/final stats visible until 60 minutes after the game ends.
-    // MLB's schedule feed exposes an officialDate/status but not always a reliable
-    // final timestamp, so when a game first becomes Final we store that moment locally.
-    const finalKey=`yankees-final-${g.gamePk}`;
-    const isFinalNow=g.status?.abstractGameState==="Final";
-    if(isFinalNow && !localStorage.getItem(finalKey)){
-      localStorage.setItem(finalKey,String(Date.now()));
+    // Keep FINAL GAME STATS visible for only 60 minutes after this browser
+    // actually sees the game transition from Live -> Final.
+    const lineupStateKey=`yankees-lineup-state-${g.gamePk}`;
+    const lineupFinalKey=`yankees-lineup-final-v2-${g.gamePk}`;
+    const previousLineupState=localStorage.getItem(lineupStateKey) || "";
+    const currentLineupState=g.status?.abstractGameState || "";
+    let lineupFinalAt=Number(localStorage.getItem(lineupFinalKey)||0);
+
+    if(currentLineupState==="Final" && !lineupFinalAt && previousLineupState==="Live"){
+      lineupFinalAt=Date.now();
+      localStorage.setItem(lineupFinalKey,String(lineupFinalAt));
     }
-    if(isFinalNow){
-      const finalAt=Number(localStorage.getItem(finalKey)||Date.now());
-      const minutesSinceFinal=(Date.now()-finalAt)/60000;
-      if(minutesSinceFinal>60){
-        box.innerHTML='<div class="tiny">Today’s game has ended. Starting lineup and final batter stats were available for 60 minutes after the game.</div>';
+
+    localStorage.setItem(lineupStateKey,currentLineupState);
+
+    if(currentLineupState==="Final"){
+      const stillWithinWindow=lineupFinalAt && (Date.now()-lineupFinalAt)<=60*60*1000;
+      if(!stillWithinWindow){
+        if(lineupFinalAt) localStorage.removeItem(lineupFinalKey);
+        box.innerHTML='<div class="tiny">Today’s game has ended. FINAL GAME STATS are shown for 60 minutes after the game ends.</div>';
         box.classList.remove("loading"); return;
       }
     }
