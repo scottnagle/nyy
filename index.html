@@ -496,6 +496,34 @@
   border:1px solid rgba(255,255,255,.16);
 }
 
+
+.at-bat-summary{margin:0 0 6px;text-align:right;color:#dbe8ff;font-size:12px;font-weight:900;letter-spacing:.04em}
+@media(max-width:600px){.at-bat-summary{text-align:left}}
+
+.at-bat-summary{
+  display:inline-flex!important;
+  align-items:center;
+  align-self:center;
+  margin:0 4px 0 0!important;
+  text-align:left!important;
+  white-space:nowrap;
+  color:#dbe8ff;
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.04em;
+}
+
+.player-main .at-bat-summary,
+.lineup-player .at-bat-summary,
+strong .at-bat-summary{
+  display:inline!important;
+  margin-left:7px!important;
+  font-size:12px!important;
+  font-weight:800!important;
+  color:#a9bdd3!important;
+  letter-spacing:0!important;
+  white-space:nowrap;
+}
 </style>
 </head>
 <body>
@@ -649,7 +677,7 @@
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v52</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v57</span>
   </div>
 </div>
 
@@ -1444,18 +1472,20 @@ async function loadStartingLineup(){
         const pos=p.position?.abbreviation || p.allPositions?.[0]?.abbreviation || "—";
         const s=p.stats?.batting || {};
         const liveStats=(isLive||isFinal) ? `
-          <div class="live-statline">
-            <span class="live-stat"><strong>${s.atBats ?? 0}</strong><span class="tiny">AB</span></span>
-            <span class="live-stat"><strong>${s.hits ?? 0}</strong><span class="tiny">H</span></span>
-            <span class="live-stat"><strong>${s.homeRuns ?? 0}</strong><span class="tiny">HR</span></span>
-            <span class="live-stat"><strong>${s.rbi ?? 0}</strong><span class="tiny">RBI</span></span>
+          <div>
+            <div class="live-statline">
+              <span class="live-stat"><strong>${s.atBats ?? 0}</strong><span class="tiny">AB</span></span>
+              <span class="live-stat"><strong>${s.hits ?? 0}</strong><span class="tiny">H</span></span>
+              <span class="live-stat"><strong>${s.homeRuns ?? 0}</strong><span class="tiny">HR</span></span>
+              <span class="live-stat"><strong>${s.rbi ?? 0}</strong><span class="tiny">RBI</span></span>
+            </div>
           </div>` : `<div class="tiny">${p.batSide?.description ? "Bats "+p.batSide.description : ""}</div>`;
 
         return `<div class="lineup-row">
           <div class="player-left">
             <div class="order-badge">${Number(p.battingOrder)>0 ? Math.max(1,Math.floor(Number(p.battingOrder)/100)) : "SUB"}</div>
             <img class="player-head" src="https://img.mlbstatic.com/mlb-photos/image/upload/w_80,q_auto:best/v1/people/${id}/headshot/67/current" alt="${p.person?.fullName||""}">
-            <div><strong>${p.person?.fullName||"Player"}${(isLive||isFinal) && isBoxScoreSubstitute(p) ? ' <span class="sub-tag">SUB</span>' : ""}</strong><div class="tiny">${pos}</div></div>
+            <div><strong>${p.person?.fullName||"Player"}${(isLive||isFinal) && isBoxScoreSubstitute(p) ? ' <span class="sub-tag">SUB</span>' : ""}${(isLive||isFinal) ? ` <span class="at-bat-summary">${s.hits ?? 0} for ${s.atBats ?? 0}</span>` : ""}</strong><div class="tiny">${pos}</div></div>
           </div>
           ${liveStats}
         </div>`;
@@ -1486,7 +1516,7 @@ function applyGameAwareMode(g){
 
   const state=g?.status?.abstractGameState || "";
   if(state==="Live"){
-    banner.innerHTML="🔴 LIVE GAME MODE • Live score and game state are prioritized.";
+    banner.innerHTML="🟢 LIVE GAME MODE • Live score and game state are prioritized.";
     main?.classList.add("mode-live");
   }else if(state==="Preview"){
     banner.innerHTML="🟡 PRE-GAME MODE • Lineup, weather and scouting are prioritized.";
