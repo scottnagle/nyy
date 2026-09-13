@@ -524,6 +524,17 @@ strong .at-bat-summary{
   letter-spacing:0!important;
   white-space:nowrap;
 }
+
+#playoffRace .playoff-status{
+  padding:12px 14px;
+  margin-bottom:12px;
+  border:1px solid rgba(53,208,127,.28);
+  border-left:4px solid #35d07f;
+  background:rgba(53,208,127,.07);
+  font-size:17px;
+  font-weight:900;
+  letter-spacing:.02em;
+}
 </style>
 </head>
 <body>
@@ -675,9 +686,16 @@ strong .at-bat-summary{
 
 
 
+  <section class="grid" style="grid-template-columns:1fr">
+    <div class="card"><div class="pad">
+      <h2>🏆 Playoff Snapshot</h2>
+      <div id="playoffRace" class="loading">Loading current AL playoff picture…</div>
+    </div></div>
+  </section>
+
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v57</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v58</span>
   </div>
 </div>
 
@@ -1649,7 +1667,7 @@ async function refreshAll(){
   liveGame=false;
   $("updated").textContent="Refreshing…";
   loadPromotions();
-  const jobs=[loadMainGame(),loadJudge(),loadStandings(),loadRecentUpcoming(),loadLeaders(),loadTopYankees(),loadStartingLineup(), loadPitchingStats()];
+  const jobs=[loadMainGame(),loadJudge(),loadStandings(),loadRecentUpcoming(),loadLeaders(),loadTopYankees(),loadStartingLineup(),loadPitchingStats(),loadPlayoffRace()];
   const results=await Promise.allSettled(jobs);
   if(results.some(r=>r.status==="rejected")) console.warn(results);
   $("updated").textContent="Updated "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"});
