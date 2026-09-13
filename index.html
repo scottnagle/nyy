@@ -535,6 +535,21 @@ strong .at-bat-summary{
   font-weight:900;
   letter-spacing:.02em;
 }
+
+.live-end-countdown{
+  display:inline-flex;
+  align-items:center;
+  padding:5px 9px;
+  border-radius:999px;
+  background:rgba(53,208,127,.12);
+  border:1px solid rgba(53,208,127,.28);
+  color:#7bf2ad;
+  font-size:11px;
+  line-height:1;
+  font-weight:900;
+  letter-spacing:.045em;
+  white-space:nowrap;
+}
 </style>
 </head>
 <body>
@@ -550,7 +565,7 @@ strong .at-bat-summary{
     <div style="text-align:right">
       <div style="display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap">
         <div class="live-pill">● Live Data</div>
-        <div class="sub" id="updated" style="margin-top:0">Loading…</div>
+        <div class="sub" id="updated" style="margin-top:0">Loading…</div><div id="liveEndCountdown" class="live-end-countdown" style="display:none">LIVE ENDS IN 60:00</div>
       </div>
       <div style="display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap;margin-top:7px">
         <button id="soundBtn" type="button">🔊 Sounds On</button>
@@ -695,7 +710,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v58</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v59</span>
   </div>
 </div>
 
@@ -1663,6 +1678,57 @@ function loadPromotions(){
   }).join("") : '<div class="tiny">No remaining 2026 Yankees promotions are currently listed.</div>';
 }
 
+
+let liveCountdownInterval=null;
+let liveCountdownEnd=0;
+
+function updateLiveEndCountdown(){
+  const el=$("liveEndCountdown");
+  if(!el) return;
+  if(!liveGame || !liveCountdownEnd){
+    el.style.display="none";
+    return;
+  }
+  const remaining=Math.max(0,liveCountdownEnd-Date.now());
+  const totalSeconds=Math.ceil(remaining/1000);
+  const mins=Math.floor(totalSeconds/60);
+  const secs=totalSeconds%60;
+  el.textContent=`LIVE ENDS IN ${mins}:${String(secs).padStart(2,"0")}`;
+  el.style.display="inline-flex";
+  if(remaining<=0){
+    clearInterval(liveCountdownInterval);
+    liveCountdownInterval=null;
+    liveCountdownEnd=0;
+    el.style.display="none";
+    refreshAll();
+  }
+}
+
+function syncLiveCountdown(){
+  const el=$("liveEndCountdown");
+  clearInterval(liveCountdownInterval);
+  liveCountdownInterval=null;
+
+  if(!liveGame){
+    liveCountdownEnd=0;
+    if(el) el.style.display="none";
+    return;
+  }
+
+  // The dashboard's live-data refresh window is 60 minutes.
+  // Keep one countdown running rather than resetting it every data refresh.
+  const storedEnd=Number(sessionStorage.getItem("yankees-live-countdown-end")||0);
+  if(storedEnd>Date.now()){
+    liveCountdownEnd=storedEnd;
+  }else{
+    liveCountdownEnd=Date.now()+60*60*1000;
+    sessionStorage.setItem("yankees-live-countdown-end",String(liveCountdownEnd));
+  }
+
+  updateLiveEndCountdown();
+  liveCountdownInterval=setInterval(updateLiveEndCountdown,1000);
+}
+
 async function refreshAll(){
   liveGame=false;
   $("updated").textContent="Refreshing…";
@@ -1679,6 +1745,7 @@ async function refreshAll(){
   if($("refreshFooterText")) $("refreshFooterText").textContent=liveGame
     ? "LIVE GAME: Data refreshes automatically every 1 minute."
     : "Data refreshes automatically every 15 minutes.";
+  syncLiveCountdown();
 }
 $("refreshBtn").addEventListener("click",refreshAll);
 $("soundBtn").addEventListener("click",async()=>{
