@@ -566,7 +566,7 @@ strong .at-bat-summary{
     <div style="text-align:right">
       <div style="display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap">
         <div class="live-pill">● Live Data</div>
-        <div class="sub" id="updated" style="margin-top:0">Loading…</div><div id="liveEndCountdown" class="live-end-countdown" style="display:none">LIVE ENDS IN 60:00</div>
+        <div class="sub" id="updated" style="margin-top:0">Loading…</div><div id="liveEndCountdown" class="live-end-countdown" style="display:none">FINAL SCORE ENDS IN 60:00</div>
       </div>
       <div style="display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap;margin-top:7px">
         <button id="soundBtn" type="button">🔊 Sounds On</button>
@@ -626,7 +626,7 @@ strong .at-bat-summary{
   </section>
 <section class="grid" id="pregameFeatures" style="grid-template-columns:1fr">
     <div class="card"><div class="pad">
-      <h2 id="lineupHeading">⚾ Yankees Lineup</h2>
+      <h2>⚾ Today’s Yankees Starting Lineup</h2>
       <div id="startingLineup" class="loading">Checking today’s lineup…</div>
     </div></div>
   </section>
@@ -711,7 +711,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v73</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v79</span>
   </div>
 </div>
 
@@ -722,33 +722,18 @@ const JUDGE = 592450;
 const AL = 103;
 const AL_EAST = 201;
 const AL_WEST = 200;
-let season = Number(nyDateString().slice(0,4));
+const season = new Date().getFullYear();
 let liveGame = false;
 let timer;
-let selectedGame = null;
-let finalHoldEnd = 0;
-let refreshInFlight = null;
-let refreshFailures = new Set();
-let requestCache = new Map();
-const FINAL_HOLD_MS = 60 * 60 * 1000;
-// Continue working when storage is unavailable (for example, a local-file browser restriction).
-const memoryStorage = new Map();
-const saved = {
-  getItem(key){ try { return localStorage.getItem(key) ?? memoryStorage.get(key) ?? null; } catch { return memoryStorage.get(key) ?? null; } },
-  setItem(key,value){ memoryStorage.set(key,String(value)); try { localStorage.setItem(key,String(value)); } catch {} },
-  removeItem(key){ memoryStorage.delete(key); try { localStorage.removeItem(key); } catch {} }
-};
 
 /* ---------- Yankees live sounds ---------- */
-let soundEnabled = saved.getItem("yankees-sounds") !== "off";
+let soundEnabled = localStorage.getItem("yankees-sounds") !== "off";
 let audioCtx = null;
 let masterSoundGain = null;
 let masterSoundCompressor = null;
 let pendingScoreSound = null;
 let suppressRunSoundUntil = 0;
 let hrBannerTimer = null;
-const observedScores = new Map();
-const observedHomeRuns = new Map();
 
 function getAudioCtx(){
   if(!audioCtx){
@@ -858,8 +843,8 @@ function updateSoundButton(){
 function checkYankeesScoreChange(gamePk,score,isLive){
   if(!gamePk || !Number.isFinite(score)) return;
   const key=`yankees-last-score-${gamePk}`;
-  const prevRaw=observedScores.get(key) ?? null;
-  observedScores.set(key,String(score));
+  const prevRaw=localStorage.getItem(key);
+  localStorage.setItem(key,String(score));
 
   /* Never play on initial page load or for a game that isn't live. */
   if(prevRaw===null || !isLive) return;
@@ -876,8 +861,8 @@ function checkYankeesScoreChange(gamePk,score,isLive){
 function checkYankeesHomeRuns(gamePk,hrTotal,isLive){
   if(!gamePk || !Number.isFinite(hrTotal)) return;
   const key=`yankees-last-hr-${gamePk}`;
-  const prevRaw=observedHomeRuns.get(key) ?? null;
-  observedHomeRuns.set(key,String(hrTotal));
+  const prevRaw=localStorage.getItem(key);
+  localStorage.setItem(key,String(hrTotal));
 
   /* Never celebrate on initial page load or after the game is already final. */
   if(prevRaw===null || !isLive) return;
@@ -908,19 +893,20 @@ const $ = id => document.getElementById(id);
 const logo = id => `https://www.mlbstatic.com/team-logos/${id}.svg`;
 
 async function getJSON(url){
-  if(requestCache.has(url)) return requestCache.get(url);
-  const request=(async()=>{
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),15000);
-    try{
-      const r=await fetch(url,{cache:"no-store",signal:controller.signal});
-      if(!r.ok) throw new Error(`HTTP ${r.status}`);
-      return await r.json();
-    }catch(e){ refreshFailures.add(url); throw e; }
-    finally{ clearTimeout(timeout); }
-  })();
-  requestCache.set(url,request);
-  return request;
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),12000);
+  try{
+    const r=await fetch(url,{
+      cache:"no-store",
+      mode:"cors",
+      credentials:"omit",
+      signal:controller.signal
+    });
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  }finally{
+    clearTimeout(timeout);
+  }
 }
 function localTime(iso){
   return new Date(iso).toLocaleString([], {weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
@@ -930,10 +916,39 @@ function teamShort(t){ return t?.team?.name?.replace("New York ","") || t?.team?
 
 const venueWeatherLocations = {
   "Yankee Stadium": {lat:40.8296, lon:-73.9262, tz:"America/New_York"},
-  "Petco Park": {lat:32.7076, lon:-117.1570, tz:"America/Los_Angeles"},
-  "Angel Stadium": {lat:33.8003, lon:-117.8827, tz:"America/Los_Angeles"},
+  "Fenway Park": {lat:42.3467, lon:-71.0972, tz:"America/New_York"},
+  "Oriole Park at Camden Yards": {lat:39.2839, lon:-76.6217, tz:"America/New_York"},
+  "George M. Steinbrenner Field": {lat:27.9800, lon:-82.5068, tz:"America/New_York"},
+  "Tropicana Field": {lat:27.7683, lon:-82.6534, tz:"America/New_York"},
+  "Rogers Centre": {lat:43.6414, lon:-79.3894, tz:"America/Toronto"},
+  "Progressive Field": {lat:41.4962, lon:-81.6852, tz:"America/New_York"},
+  "Comerica Park": {lat:42.3390, lon:-83.0485, tz:"America/Detroit"},
+  "Kauffman Stadium": {lat:39.0517, lon:-94.4803, tz:"America/Chicago"},
   "Target Field": {lat:44.9817, lon:-93.2776, tz:"America/Chicago"},
-  "Chase Field": {lat:33.4455, lon:-112.0667, tz:"America/Phoenix"}
+  "Rate Field": {lat:41.8300, lon:-87.6338, tz:"America/Chicago"},
+  "Guaranteed Rate Field": {lat:41.8300, lon:-87.6338, tz:"America/Chicago"},
+  "Daikin Park": {lat:29.7573, lon:-95.3555, tz:"America/Chicago"},
+  "Minute Maid Park": {lat:29.7573, lon:-95.3555, tz:"America/Chicago"},
+  "Angel Stadium": {lat:33.8003, lon:-117.8827, tz:"America/Los_Angeles"},
+  "Sutter Health Park": {lat:38.5804, lon:-121.5139, tz:"America/Los_Angeles"},
+  "Oakland Coliseum": {lat:37.7516, lon:-122.2005, tz:"America/Los_Angeles"},
+  "T-Mobile Park": {lat:47.5914, lon:-122.3325, tz:"America/Los_Angeles"},
+  "Globe Life Field": {lat:32.7473, lon:-97.0847, tz:"America/Chicago"},
+  "Truist Park": {lat:33.8908, lon:-84.4678, tz:"America/New_York"},
+  "loanDepot park": {lat:25.7781, lon:-80.2197, tz:"America/New_York"},
+  "Citi Field": {lat:40.7571, lon:-73.8458, tz:"America/New_York"},
+  "Citizens Bank Park": {lat:39.9061, lon:-75.1665, tz:"America/New_York"},
+  "Nationals Park": {lat:38.8730, lon:-77.0074, tz:"America/New_York"},
+  "Wrigley Field": {lat:41.9484, lon:-87.6553, tz:"America/Chicago"},
+  "Great American Ball Park": {lat:39.0979, lon:-84.5082, tz:"America/New_York"},
+  "American Family Field": {lat:43.0280, lon:-87.9712, tz:"America/Chicago"},
+  "PNC Park": {lat:40.4469, lon:-80.0057, tz:"America/New_York"},
+  "Busch Stadium": {lat:38.6226, lon:-90.1928, tz:"America/Chicago"},
+  "Chase Field": {lat:33.4455, lon:-112.0667, tz:"America/Phoenix"},
+  "Coors Field": {lat:39.7559, lon:-104.9942, tz:"America/Denver"},
+  "Dodger Stadium": {lat:34.0739, lon:-118.2400, tz:"America/Los_Angeles"},
+  "Petco Park": {lat:32.7076, lon:-117.1570, tz:"America/Los_Angeles"},
+  "Oracle Park": {lat:37.7786, lon:-122.3893, tz:"America/Los_Angeles"}
 };
 
 function weatherIcon(code){
@@ -960,17 +975,7 @@ function weatherText(code){
 async function loadGameWeather(g){
   const box=$("gameWeather");
   const venue=g.venue?.name || "";
-  let loc=venueWeatherLocations[venue];
-  if(!loc && g.venue?.id){
-    try{
-      const data=await getJSON(`${API}/venues/${g.venue.id}?hydrate=location`);
-      const coords=data.venues?.[0]?.location?.defaultCoordinates;
-      if(Number.isFinite(coords?.latitude) && Number.isFinite(coords?.longitude)){
-        loc={lat:coords.latitude,lon:coords.longitude,tz:"UTC"};
-        venueWeatherLocations[venue]=loc;
-      }
-    }catch(e){}
-  }
+  const loc=venueWeatherLocations[venue];
   if(!loc){
     box.innerHTML=`🌤️ <span>Game-time weather unavailable for ${venue || "this venue"}.</span>`;
     box.classList.remove("loading"); return;
@@ -982,7 +987,7 @@ async function loadGameWeather(g){
     box.classList.remove("loading"); return;
   }
   const date=new Intl.DateTimeFormat("en-CA",{timeZone:loc.tz,year:"numeric",month:"2-digit",day:"2-digit"}).format(game);
-  const hour=Number(new Intl.DateTimeFormat("en-US",{timeZone:loc.tz,hour:"2-digit",hourCycle:"h23"}).format(game));
+  const hour=Number(new Intl.DateTimeFormat("en-US",{timeZone:loc.tz,hour:"2-digit",hour12:false}).format(game).slice(0,2));
   const url=`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&hourly=temperature_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=${encodeURIComponent(loc.tz)}&start_date=${date}&end_date=${date}`;
   try{
     const w=await getJSON(url);
@@ -1002,7 +1007,6 @@ async function loadGameWeather(g){
       <span class="${rain>=40?'weather-alert':''}">💧 ${rain}% rain</span>
       <span>💨 ${wind} mph</span>`;
   }catch(e){
-    refreshFailures.add("weather");
     box.innerHTML=`🌤️ <span>Game-time weather temporarily unavailable.</span>`;
   }
   box.classList.remove("loading");
@@ -1029,10 +1033,9 @@ async function loadScoutingReport(g){
     // Pull recent form for both clubs.
     const gameDate=new Date(g.gameDate);
     const start=new Date(gameDate); start.setDate(start.getDate()-12);
-    const fmt=d=>d.toISOString().slice(0,10);
 
     async function recent(teamId){
-      const d=await getJSON(`${API}/schedule?sportId=1&teamId=${teamId}&startDate=${fmt(start)}&endDate=${fmt(gameDate)}&hydrate=team`);
+      const d=await getJSON(`${API}/schedule?sportId=1&teamId=${teamId}&startDate=${nyDateString(start)}&endDate=${nyDateString(gameDate)}&hydrate=team`);
       const games=(d.dates||[]).flatMap(x=>x.games||[]).filter(x=>x.status?.abstractGameState==="Final").slice(-5);
       let w=0,l=0;
       games.forEach(x=>{
@@ -1076,7 +1079,7 @@ async function loadScoutingReport(g){
 
 function markSectionError(id,msg="Temporarily unavailable"){
   const el=$(id);
-  if(el){ el.innerHTML=`<div class="tiny">${msg}</div>`; el.classList.remove("loading"); }
+  if(el) el.innerHTML=`<div class="tiny">${msg}</div>`;
 }
 
 function renderLiveBoxScore(g){
@@ -1142,54 +1145,148 @@ function renderLiveBoxScore(g){
   box.classList.remove("loading");
 }
 
-async function loadMainGame(){
-  const url=`${API}/schedule?sportId=1&teamId=${YANKEES}&startDate=${nyDateString(new Date(Date.now()-86400000*2))}&endDate=${nyDateString(new Date(Date.now()+86400000*30))}&hydrate=team,linescore,probablePitcher`;
-  const data=await getJSON(url);
-  const games=(data.dates||[]).flatMap(d=>d.games||[])
-    .sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate));
-  const nowMs=Date.now();
-  const playable=g=>!/(postponed|cancelled|canceled)/i.test(g.status?.detailedState||"");
-  const current=games.find(g=>g.status?.abstractGameState==="Live" && playable(g));
-  const finals=games.filter(g=>g.status?.abstractGameState==="Final" && playable(g)).reverse();
-  let recentFinal=null;
-  finalHoldEnd=0;
-  // Use the official final play time, including when the page opens after the game.
-  // One timestamp drives the score, batting, pitching and header countdown.
-  if(!current && finals[0]){
-    const last=finals[0];
-    const key=`yankees-final-ended-v3-${last.gamePk}`;
-    let finalAt=Number(saved.getItem(key)||0);
-    if(!finalAt){
-      try{
-        const feed=await getJSON(`https://statsapi.mlb.com/api/v1.1/game/${last.gamePk}/feed/live`);
-        const plays=feed.liveData?.plays;
-        const finalPlay=plays?.allPlays?.slice(-1)[0] || plays?.currentPlay;
-        finalAt=Date.parse(finalPlay?.about?.endTime||"") || 0;
-      }catch(e){
-        // If the final-play feed is down, retain a transition observed this session.
-        if(selectedGame?.gamePk===last.gamePk && selectedGame.status?.abstractGameState==="Live") finalAt=nowMs;
+async function getOfficialGameEndTime(gamePk){
+  // Use several MLB timestamps so one missing field cannot make the timer disappear.
+  try{
+    const feed=await getJSON(`${API}/game/${gamePk}/feed/live`);
+    const plays=feed.liveData?.plays?.allPlays||[];
+
+    // 1) Final play / final play-event end timestamp.
+    for(let i=plays.length-1;i>=0;i--){
+      const play=plays[i]||{};
+      const candidates=[
+        play.about?.endTime,
+        play.playEndTime,
+        ...(play.playEvents||[]).slice().reverse().flatMap(e=>[
+          e.endTime,e.playEndTime,e.startTime
+        ])
+      ];
+      for(const raw of candidates){
+        const ms=raw ? new Date(raw).getTime() : 0;
+        if(Number.isFinite(ms) && ms>0) return ms;
       }
-      if(finalAt) saved.setItem(key,String(finalAt));
     }
-    if(finalAt && nowMs>=finalAt && nowMs<finalAt+FINAL_HOLD_MS){
-      recentFinal=last;
-      finalHoldEnd=finalAt+FINAL_HOLD_MS;
+
+    // 2) MLB feed metadata timestamp (YYYYMMDD_HHMMSS, UTC).
+    const stamp=feed.metaData?.timeStamp;
+    if(/^\d{8}_\d{6}$/.test(stamp||"")){
+      const iso=`${stamp.slice(0,4)}-${stamp.slice(4,6)}-${stamp.slice(6,8)}T${stamp.slice(9,11)}:${stamp.slice(11,13)}:${stamp.slice(13,15)}Z`;
+      const ms=new Date(iso).getTime();
+      if(Number.isFinite(ms) && ms>0) return ms;
+    }
+
+    // 3) True first pitch + MLB official duration.
+    const firstPitch=feed.gameData?.datetime?.firstPitch;
+    const duration=Number(feed.gameData?.gameInfo?.gameDuration||0);
+    const firstMs=firstPitch ? new Date(firstPitch).getTime() : 0;
+    if(firstMs && duration>0) return firstMs + duration*60*1000;
+  }catch(e){
+    console.warn("MLB full feed end-time lookup failed",e);
+  }
+
+  // 4) Smaller play-by-play endpoint fallback for completed games.
+  try{
+    const pbp=await getJSON(`${API}/game/${gamePk}/playByPlay`);
+    const plays=pbp.allPlays||[];
+    for(let i=plays.length-1;i>=0;i--){
+      const play=plays[i]||{};
+      const candidates=[
+        play.about?.endTime,
+        play.playEndTime,
+        ...(play.playEvents||[]).slice().reverse().flatMap(e=>[
+          e.endTime,e.playEndTime,e.startTime
+        ])
+      ];
+      for(const raw of candidates){
+        const ms=raw ? new Date(raw).getTime() : 0;
+        if(Number.isFinite(ms) && ms>0) return ms;
+      }
+    }
+  }catch(e){
+    console.warn("MLB play-by-play end-time lookup failed",e);
+  }
+  return 0;
+}
+
+async function loadMainGame(){
+  const today = new Date();
+  const start = new Date(today); start.setDate(today.getDate()-1);
+  const end = new Date(today); end.setDate(today.getDate()+7);
+  const fmt=d=>d.toISOString().slice(0,10);
+  const url=`${API}/schedule?sportId=1&teamId=${YANKEES}&startDate=${nyDateString(new Date(Date.now()-86400000*2))}&endDate=${nyDateString(new Date(Date.now()+86400000*10))}&hydrate=team,linescore,probablePitcher`;
+  const data=await getJSON(url);
+  let games=(data.dates||[]).flatMap(d=>d.games||[]);
+  const rank = g => {
+    const st=(g.status?.abstractGameState||"").toLowerCase();
+    if(st==="live") return 0;
+    if(st==="preview") return 1;
+    return 2;
+  };
+  games.sort((a,b)=>rank(a)-rank(b) || new Date(a.gameDate)-new Date(b.gameDate));
+
+  const nowMs=Date.now();
+  const liveOrPreview=games.find(g=>["Live","Preview"].includes(g.status?.abstractGameState));
+  const finals=games
+    .filter(g=>g.status?.abstractGameState==="Final")
+    .sort((a,b)=>new Date(b.gameDate)-new Date(a.gameDate));
+
+  // Track prior state as a fallback only. The primary Final timer is reconstructed
+  // from MLB's game-end timestamps, so closing/reopening the browser does not reset it.
+  const previousStates=new Map(
+    games.map(game=>[
+      game.gamePk,
+      localStorage.getItem(`yankees-main-state-${game.gamePk}`) || ""
+    ])
+  );
+
+  let recentFinal=null;
+  let recentFinalAt=0;
+  for(const game of finals){
+    const finalKey=`yankees-main-final-v5-${game.gamePk}`;
+    let finalAt=Number(localStorage.getItem(finalKey)||0);
+
+    // Use the MLB-derived game end, never the page-open time.
+    // Closing/reopening the tab therefore cannot restart the 60-minute window.
+    if(!finalAt){
+      finalAt=await getOfficialGameEndTime(game.gamePk);
+      if(!finalAt && previousStates.get(game.gamePk)==="Live") finalAt=nowMs;
+      if(finalAt) localStorage.setItem(finalKey,String(finalAt));
+    }
+
+    if(finalAt && nowMs>=finalAt && (nowMs-finalAt)<=60*60*1000){
+      recentFinal=game;
+      recentFinalAt=finalAt;
+      break;
+    }
+
+    if(finalAt && (nowMs-finalAt)>60*60*1000){
+      localStorage.removeItem(finalKey);
     }
   }
-  const upcoming=games.find(g=>g.status?.abstractGameState==="Preview" && playable(g)
-    && (g.officialDate||nyDateString(new Date(g.gameDate)))>=nyDateString());
-  const g=current || recentFinal || upcoming || finals[0];
-  selectedGame=g||null;
-  if(!g){
-    liveGame=false;
-    $("mainGame").innerHTML='<div class="tiny">No Yankees game currently scheduled.</div>';
-    $("mainGame").classList.remove("loading");
-    $("liveBoxScore").innerHTML='<div class="tiny">No game data available.</div>';
-    $("gameWeather").textContent='No upcoming game-time forecast.';
-    $("scoutingReport").textContent='No upcoming matchup.';
-    applyGameAwareMode(null);
-    return;
-  }
+
+  // Save the current statuses only after the transition check above.
+  games.forEach(game=>{
+    localStorage.setItem(
+      `yankees-main-state-${game.gamePk}`,
+      game.status?.abstractGameState || ""
+    );
+  });
+
+  // During a live game, always show LIVE.
+  // After the game becomes Final, keep that final score visible for 60 minutes.
+  // Once the 60-minute window expires, advance to the next scheduled game.
+  let g = games.find(g=>g.status?.abstractGameState==="Live")
+       || recentFinal
+       || games.find(g=>g.status?.abstractGameState==="Preview")
+       || liveOrPreview
+       || games[games.length-1];
+
+  // Header countdown is tied to the retained Final score only.
+  finalScoreHoldEnd = (recentFinal && recentFinalAt)
+    ? recentFinalAt + 60*60*1000
+    : 0;
+
+  if(!g){ $("mainGame").innerHTML='<div class="error">No Yankees game found.</div>'; return; }
 
   liveGame=g.status?.abstractGameState==="Live";
 
@@ -1200,17 +1297,18 @@ async function loadMainGame(){
     }else if(g.status?.abstractGameState==="Final" && recentFinal?.gamePk===g.gamePk){
       mainHeading.textContent="Final Yankees Game";
     }else{
-      mainHeading.textContent=g.status?.abstractGameState==="Final" ? "Last Yankees Game" : "Next Yankees Game";
+      mainHeading.textContent="Next Yankees Game";
     }
   }
 
   applyGameAwareMode(g);
   renderLiveBoxScore(g);
-
+  loadGameWeather(g);
+  loadScoutingReport(g);
   const away=g.teams.away, home=g.teams.home;
   const yankeesHome=home.team.id===YANKEES;
   const yankeesScore=Number(yankeesHome ? home.score : away.score);
-
+  checkYankeesScoreChange(g.gamePk,yankeesScore,liveGame);
   const opponent=yankeesHome ? away : home;
   const matchupLabel=yankeesHome
     ? `${teamShort(opponent)} @ Yankees`
@@ -1240,7 +1338,6 @@ async function loadMainGame(){
       <small>${g.seriesDescription || ""}</small>
     </div>`;
   $("mainGame").classList.remove("loading");
-  return g;
 }
 
 
@@ -1278,7 +1375,6 @@ async function loadJudgeStatus(){
       detail.textContent="The MLB roster feed did not return a current status for Aaron Judge.";
     }
   }catch(e){
-    refreshFailures.add("judge-status");
     main.textContent="⚠️ STATUS TEMPORARILY UNAVAILABLE";
     detail.textContent="Could not reach the MLB roster feed. The dashboard will try again on the next refresh.";
   }
@@ -1332,11 +1428,11 @@ async function loadPlayoffRace(){
     const y=teams.find(t=>t.team.id===YANKEES);
     if(!y) throw new Error("No Yankees standings");
 
-    const divisionWinners=records.map(r=>(r.teamRecords||[]).find(t=>Number(t.divisionRank)===1)).filter(Boolean)
-      .sort((a,b)=>Number(a.leagueRank)-Number(b.leagueRank));
+    const divisionWinners=records.map(r=>(r.teamRecords||[])[0]).filter(Boolean)
+      .sort((a,b)=>parseFloat(b.winningPercentage||0)-parseFloat(a.winningPercentage||0));
     const winnerIds=new Set(divisionWinners.map(t=>t.team.id));
     const wildCards=teams.filter(t=>!winnerIds.has(t.team.id))
-      .sort((a,b)=>Number(a.wildCardRank)-Number(b.wildCardRank));
+      .sort((a,b)=>parseFloat(b.winningPercentage||0)-parseFloat(a.winningPercentage||0));
 
     let seed=null, position="";
     const divIndex=divisionWinners.findIndex(t=>t.team.id===YANKEES);
@@ -1356,7 +1452,6 @@ async function loadPlayoffRace(){
       </div>
       <div class="tiny" style="margin-top:12px"><strong>If the season ended today:</strong> ${seed ? `Yankees would be AL seed #${seed}.` : "Yankees would be outside the current AL playoff field."}</div>`;
   }catch(e){
-    refreshFailures.add("playoffs");
     box.innerHTML='<div class="tiny">Playoff race data temporarily unavailable.</div>';
   }
   box.classList.remove("loading");
@@ -1367,16 +1462,39 @@ async function loadPitchingStats(){
   const box=$("pitchingStats");
   if(!box) return;
   try{
-    const g=selectedGame;
-    if(!g){ box.innerHTML='<div class="tiny">No Yankees game scheduled.</div>'; return; }
+    const today=nyDateString();
+    const sched=await getJSON(`${API}/schedule?sportId=1&teamId=${YANKEES}&date=${today}&hydrate=team,linescore`);
+    const g=sched.dates?.[0]?.games?.[0];
+    if(!g){ box.innerHTML='<div class="tiny">No Yankees game scheduled today.</div>'; return; }
+
     const state=g.status?.abstractGameState || "";
+
+    // Keep final pitching stats visible for only 60 minutes after this browser
+    // actually sees the game transition from Live -> Final.
+    const pitchingStateKey=`yankees-pitching-state-${g.gamePk}`;
+    const pitchingFinalKey=`yankees-pitching-final-v5-${g.gamePk}`;
+    const previousPitchingState=localStorage.getItem(pitchingStateKey) || "";
+    let pitchingFinalAt=Number(localStorage.getItem(pitchingFinalKey)||0);
+
+    if(state==="Final" && !pitchingFinalAt){
+      pitchingFinalAt=await getOfficialGameEndTime(g.gamePk);
+      if(pitchingFinalAt) localStorage.setItem(pitchingFinalKey,String(pitchingFinalAt));
+    }
+
+    localStorage.setItem(pitchingStateKey,state);
+
     if(state==="Preview"){
-      box.innerHTML=`<div class="tiny">Pitching stats will appear when the game begins.<br><strong>${localTime(g.gameDate)}</strong></div>`;
+      box.innerHTML='<div class="tiny">Pitching stats will appear when today’s game begins.</div>';
       return;
     }
-    if(state==="Final" && finalHoldEnd<=Date.now()){
-      box.innerHTML='<div class="tiny">Final pitching stats are shown for 60 minutes after the game ends.</div>';
-      return;
+
+    if(state==="Final"){
+      const stillWithinWindow=pitchingFinalAt && (Date.now()-pitchingFinalAt)<=60*60*1000;
+      if(!stillWithinWindow){
+        if(pitchingFinalAt) localStorage.removeItem(pitchingFinalKey);
+        box.innerHTML='<div class="tiny">Final pitching stats are shown for 60 minutes after the game ends.</div>';
+        return;
+      }
     }
 
     const bs=await getJSON(`${API}/game/${g.gamePk}/boxscore`);
@@ -1413,9 +1531,8 @@ async function loadPitchingStats(){
     box.innerHTML=`<div style="font-size:13px;font-weight:900;letter-spacing:.10em;color:#dbe8ff;margin-bottom:10px">${label}</div>
       ${renderTeam(yankKey,g.teams?.[yankKey]?.team?.name||"New York Yankees")}`;
   }catch(e){
-    refreshFailures.add("pitching");
     box.innerHTML='<div class="tiny">Pitching stats temporarily unavailable. They will retry on the next refresh.</div>';
-  }finally{ box.classList.remove("loading"); }
+  }
 }
 
 function isBoxScoreSubstitute(p){
@@ -1433,17 +1550,39 @@ function isBoxScoreSubstitute(p){
 async function loadStartingLineup(){
   const box=$("startingLineup");
   try{
-    const g=selectedGame;
-    if(!g){
-      box.innerHTML='<div class="tiny">No Yankees game scheduled.</div>';
-      return;
+    const now=new Date();
+    const date=nyDateString(now);
+    const sched=await getJSON(`${API}/schedule?sportId=1&teamId=${YANKEES}&date=${date}&hydrate=team,linescore`);
+    const games=(sched.dates||[]).flatMap(d=>d.games||[]);
+    if(!games.length){
+      box.innerHTML='<div class="tiny">No Yankees game scheduled today.</div>';
+      box.classList.remove("loading"); return;
     }
+
+    const g=games[0];
+
+    // Keep FINAL GAME STATS visible for only 60 minutes after this browser
+    // actually sees the game transition from Live -> Final.
+    const lineupStateKey=`yankees-lineup-state-${g.gamePk}`;
+    const lineupFinalKey=`yankees-lineup-final-v5-${g.gamePk}`;
+    const previousLineupState=localStorage.getItem(lineupStateKey) || "";
     const currentLineupState=g.status?.abstractGameState || "";
-    $("lineupHeading").textContent=currentLineupState==="Live" ? "⚾ Live Game Stats"
-      : currentLineupState==="Final" ? "⚾ Final Game Stats" : "⚾ Yankees Starting Lineup";
-    if(currentLineupState==="Final" && finalHoldEnd<=Date.now()){
-      box.innerHTML='<div class="tiny">Final game stats are shown for 60 minutes after the game ends.</div>';
-      return;
+    let lineupFinalAt=Number(localStorage.getItem(lineupFinalKey)||0);
+
+    if(currentLineupState==="Final" && !lineupFinalAt){
+      lineupFinalAt=await getOfficialGameEndTime(g.gamePk);
+      if(lineupFinalAt) localStorage.setItem(lineupFinalKey,String(lineupFinalAt));
+    }
+
+    localStorage.setItem(lineupStateKey,currentLineupState);
+
+    if(currentLineupState==="Final"){
+      const stillWithinWindow=lineupFinalAt && (Date.now()-lineupFinalAt)<=60*60*1000;
+      if(!stillWithinWindow){
+        if(lineupFinalAt) localStorage.removeItem(lineupFinalKey);
+        box.innerHTML='<div class="tiny">Today’s game has ended. FINAL GAME STATS are shown for 60 minutes after the game ends.</div>';
+        box.classList.remove("loading"); return;
+      }
     }
     const bs=await getJSON(`${API}/game/${g.gamePk}/boxscore`);
     const yHome=g.teams.home.team.id===YANKEES;
@@ -1482,11 +1621,7 @@ async function loadStartingLineup(){
       rbi:Number(teamBat.rbi||0)
     };
 
-    // Compare runs and home runs from the same response so a home run cannot play both sounds.
-    const scoreKey=`yankees-last-score-${g.gamePk}`;
-    const allowSound=isLive || (isFinal && observedScores.has(scoreKey));
-    checkYankeesScoreChange(g.gamePk,Number(teamBat.runs),allowSound);
-    checkYankeesHomeRuns(g.gamePk,totals.hr,allowSound);
+    checkYankeesHomeRuns(g.gamePk,totals.hr,isLive);
 
     box.innerHTML=`
       <div style="margin-bottom:12px;font-size:13px;font-weight:900;letter-spacing:.10em;color:#dbe8ff">${gameLabel}</div>
@@ -1524,9 +1659,9 @@ async function loadStartingLineup(){
           </div>
         </div>` : ""}`;
   }catch(e){
-    refreshFailures.add("lineup");
     box.innerHTML='<div class="tiny">Starting lineup temporarily unavailable.</div>';
-  }finally{ box.classList.remove("loading"); }
+  }
+  box.classList.remove("loading");
 }
 
 
@@ -1554,11 +1689,10 @@ async function loadRecentUpcoming(){
   const now=new Date();
   const past=new Date(now); past.setDate(now.getDate()-20);
   const future=new Date(now); future.setDate(now.getDate()+20);
-  const fmt=d=>nyDateString(d);
-  const data=await getJSON(`${API}/schedule?sportId=1&teamId=${YANKEES}&startDate=${fmt(past)}&endDate=${fmt(future)}&hydrate=team,linescore`);
+  const data=await getJSON(`${API}/schedule?sportId=1&teamId=${YANKEES}&startDate=${nyDateString(past)}&endDate=${nyDateString(future)}&hydrate=team,linescore`);
   const games=(data.dates||[]).flatMap(d=>d.games||[]).sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate));
-  const done=games.filter(g=>g.status?.abstractGameState==="Final" && !/(postponed|cancelled|canceled)/i.test(g.status?.detailedState||"")).slice(-7).reverse();
-  const next=games.filter(g=>g.status?.abstractGameState==="Preview" && !/(postponed|cancelled|canceled)/i.test(g.status?.detailedState||"") && new Date(g.gameDate)>=new Date(now.getTime()-6*3600*1000)).slice(0,7);
+  const done=games.filter(g=>g.status?.abstractGameState==="Final").slice(-7).reverse();
+  const next=games.filter(g=>g.status?.abstractGameState==="Preview" && new Date(g.gameDate)>=new Date(now.getTime()-6*3600*1000)).slice(0,7);
 
   $("recent").innerHTML=done.map(g=>{
     const yHome=g.teams.home.team.id===YANKEES;
@@ -1577,7 +1711,7 @@ async function loadRecentUpcoming(){
 }
 
 async function loadLeaders(){
-  const url=`${API}/stats?stats=season&group=hitting&season=${season}&sportIds=1&playerPool=ALL&limit=5&sortStat=homeRuns`;
+  const url=`${API}/stats?stats=season&group=hitting&season=${season}&playerPool=QUALIFIED&limit=5&sortStat=homeRuns`;
   const data=await getJSON(url);
   const splits=data.stats?.[0]?.splits || [];
   $("leaders").innerHTML=splits.slice(0,5).map((x,i)=>`
@@ -1591,49 +1725,76 @@ async function loadLeaders(){
 
 
 async function loadTopYankees(){
-  const roster = await getJSON(`${API}/teams/${YANKEES}/roster?rosterType=active`);
-  const ids = (roster.roster || []).filter(x => x.position?.type !== "Pitcher").map(x => x.person.id);
-  if(!ids.length){ $("topYankees").innerHTML='<div class="tiny">No player data available.</div>'; return; }
+  const box=$("topYankees");
+  try{
+    // One MLB request: active roster hydrated with each player's current season hitting stats.
+    // This avoids both N-per-player requests and the bulk endpoint's incomplete player set.
+    const roster=await getJSON(
+      `${API}/teams/${YANKEES}/roster?rosterType=active&hydrate=person(stats(group=[hitting],type=[season],season=${season}))`
+    );
 
-  const stats = await Promise.all(ids.map(async id => {
-    try{
-      const d=await getJSON(`${API}/people/${id}/stats?stats=season&group=hitting&season=${season}`);
-      const split=d.stats?.[0]?.splits?.[0];
-      return split ? {id, name:split.player?.fullName || roster.roster.find(r=>r.person.id===id)?.person.fullName, s:split.stat} : null;
-    }catch(e){ return null; }
-  }));
+    const players=(roster.roster||[])
+      .filter(x=>x.position?.type!=="Pitcher")
+      .map(x=>{
+        const statGroups=x.person?.stats||[];
+        const hitting=statGroups.find(st=>st.group?.displayName==="hitting" || st.group?.displayName==="Hitting");
+        const split=hitting?.splits?.[0];
+        return split ? {
+          id:x.person.id,
+          name:x.person.fullName || split.player?.fullName || "Player",
+          s:split.stat || {}
+        } : null;
+      })
+      .filter(Boolean);
 
-  const players=stats.filter(Boolean).filter(p => (p.s.plateAppearances || 0) >= 100);
-  // Simple transparent composite for an at-a-glance "overall" offensive ranking.
-  players.forEach(p=>{
-    const s=p.s;
-    p.score=(parseFloat(s.ops)||0)*100 + (s.homeRuns||0)*1.1 + (s.rbi||0)*0.35 + (s.runs||0)*0.25 + (s.stolenBases||0)*0.3;
-  });
-  players.sort((a,b)=>b.score-a.score);
-  const top=players.slice(0,5);
+    // Prefer established hitters (100+ PA), then fill remaining spots from active hitters
+    // so this section displays five Yankees whenever five hitters have season stats.
+    const established=players.filter(p=>(Number(p.s.plateAppearances)||0)>=100);
+    const others=players.filter(p=>(Number(p.s.plateAppearances)||0)<100);
 
-  $("topYankees").innerHTML=top.map((p,i)=>`
-    <div class="top-player">
-      <div class="top-player-main">
-        <div class="top-rank">${i+1}</div>
-        <img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_100,q_auto:best/v1/people/${p.id}/headshot/67/current"
-             alt="${p.name}" style="width:54px;height:54px;border-radius:50%;object-fit:cover;background:#fff">
-        <div>
-          <div class="top-player-name">${p.name}</div>
-          <div class="tiny">${p.s.gamesPlayed||0} games</div>
+    const scorePlayer=p=>{
+      const s=p.s;
+      p.score=(parseFloat(s.ops)||0)*100
+        +(Number(s.homeRuns)||0)*1.1
+        +(Number(s.rbi)||0)*0.35
+        +(Number(s.runs)||0)*0.25
+        +(Number(s.stolenBases)||0)*0.3;
+      return p;
+    };
+
+    established.forEach(scorePlayer);
+    others.forEach(scorePlayer);
+    established.sort((a,b)=>b.score-a.score);
+    others.sort((a,b)=>b.score-a.score);
+
+    const top=[...established,...others].slice(0,5);
+
+    box.innerHTML=top.map((p,i)=>`
+      <div class="top-player">
+        <div class="top-player-main">
+          <div class="top-rank">${i+1}</div>
+          <img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_100,q_auto:best/v1/people/${p.id}/headshot/67/current"
+               alt="${p.name}" style="width:54px;height:54px;border-radius:50%;object-fit:cover;background:#fff">
+          <div>
+            <div class="top-player-name">${p.name}</div>
+            <div class="tiny">${p.s.gamesPlayed||0} games</div>
+          </div>
         </div>
-      </div>
-      <div class="top-stat-grid">
-        <div class="top-stat"><b>${p.s.hits||0}</b><span>HITS</span></div>
-        <div class="top-stat"><b>${p.s.homeRuns||0}</b><span>HR</span></div>
-        <div class="top-stat"><b>${p.s.rbi||0}</b><span>RBI</span></div>
-        <div class="top-stat"><b>${p.s.runs||0}</b><span>RUNS</span></div>
-        <div class="top-stat"><b>${p.s.avg||"—"}</b><span>AVG</span></div>
-        <div class="top-stat"><b>${p.s.ops||"—"}</b><span>OPS</span></div>
-        <div class="top-stat"><b>${p.s.stolenBases||0}</b><span>SB</span></div>
-      </div>
-    </div>`).join("") || '<div class="tiny">Top-player data unavailable.</div>';
-  $("topYankees").classList.remove("loading");
+        <div class="top-stat-grid">
+          <div class="top-stat"><b>${p.s.hits||0}</b><span>HITS</span></div>
+          <div class="top-stat"><b>${p.s.homeRuns||0}</b><span>HR</span></div>
+          <div class="top-stat"><b>${p.s.rbi||0}</b><span>RBI</span></div>
+          <div class="top-stat"><b>${p.s.runs||0}</b><span>RUNS</span></div>
+          <div class="top-stat"><b>${p.s.avg||"—"}</b><span>AVG</span></div>
+          <div class="top-stat"><b>${p.s.ops||"—"}</b><span>OPS</span></div>
+          <div class="top-stat"><b>${p.s.stolenBases||0}</b><span>SB</span></div>
+        </div>
+      </div>`).join("") || '<div class="tiny">Top-player data unavailable.</div>';
+  }catch(e){
+    console.warn("Top Yankees stats failed",e);
+    box.innerHTML='<div class="tiny">Top-player data temporarily unavailable.</div>';
+  }
+  box.classList.remove("loading");
 }
 
 const yankeesPromotions2026 = [
@@ -1670,88 +1831,74 @@ function loadPromotions(){
 
 
 let liveCountdownInterval=null;
+let liveCountdownEnd=0;
+let finalScoreHoldEnd=0;
+
 function updateLiveEndCountdown(){
   const el=$("liveEndCountdown");
   if(!el) return;
-  if(!finalHoldEnd){ el.style.display="none"; return; }
-  const remaining=Math.max(0,finalHoldEnd-Date.now());
+  if(!liveCountdownEnd){
+    el.style.display="none";
+    return;
+  }
+
+  const remaining=Math.max(0,liveCountdownEnd-Date.now());
   const totalSeconds=Math.ceil(remaining/1000);
-  el.textContent=`LIVE ENDS IN ${Math.floor(totalSeconds/60)}:${String(totalSeconds%60).padStart(2,"0")}`;
-  el.title="Time remaining to view the final score and game stats";
+  const mins=Math.floor(totalSeconds/60);
+  const secs=totalSeconds%60;
+  el.textContent=`FINAL SCORE ENDS IN ${mins}:${String(secs).padStart(2,"0")}`;
   el.style.display="inline-flex";
+
   if(remaining<=0){
     clearInterval(liveCountdownInterval);
     liveCountdownInterval=null;
-    finalHoldEnd=0;
+    liveCountdownEnd=0;
+    finalScoreHoldEnd=0;
     el.style.display="none";
-    // Expire visible stats immediately, even when the next network request fails.
-    $("startingLineup").innerHTML='<div class="tiny">The 60-minute final-stats window has ended.</div>';
-    $("pitchingStats").innerHTML='<div class="tiny">The 60-minute final-stats window has ended.</div>';
     refreshAll();
   }
 }
+
 function syncLiveCountdown(){
+  const el=$("liveEndCountdown");
   clearInterval(liveCountdownInterval);
   liveCountdownInterval=null;
-  updateLiveEndCountdown();
-  if(finalHoldEnd>Date.now()) liveCountdownInterval=setInterval(updateLiveEndCountdown,1000);
-}
-function refreshAll(){
-  if(refreshInFlight) return refreshInFlight;
-  refreshInFlight=performRefresh().finally(()=>{ refreshInFlight=null; });
-  return refreshInFlight;
-}
-async function performRefresh(){
-  clearTimeout(timer);
-  requestCache=new Map();
-  refreshFailures=new Set();
-  season=Number(nyDateString().slice(0,4));
-  $("updated").textContent="Refreshing…";
-  $("refreshBtn").disabled=true;
-  loadPromotions();
-  async function run(job,ids){
-    try{ await job(); }
-    catch(e){
-      refreshFailures.add(ids.join(","));
-      ids.forEach(id=>markSectionError(id,"Temporarily unavailable. Retrying automatically."));
-      console.warn("Dashboard section unavailable:",ids.join(", "),e.message);
-    }
+
+  // Hidden while game is live. Starts only after Live -> Final.
+  if(!finalScoreHoldEnd || finalScoreHoldEnd<=Date.now()){
+    liveCountdownEnd=0;
+    if(el) el.style.display="none";
+    return;
   }
-  // Other panels can load independently; all game panels wait for a single selected game.
-  const main=run(async()=>{
-    try{ await loadMainGame(); }
-    catch(e){
-      $("gameAwareStatus").textContent="⚾ Game data temporarily unavailable • Retrying automatically.";
-      $("gameWeather").textContent="Game-time weather unavailable until game data reconnects.";
-      $("scoutingReport").textContent="Matchup analysis temporarily unavailable.";
-      throw e;
-    }
-    await Promise.allSettled([loadStartingLineup(),loadPitchingStats(),
-      selectedGame ? loadGameWeather(selectedGame) : Promise.resolve(),
-      selectedGame ? loadScoutingReport(selectedGame) : Promise.resolve()]);
-  },["mainGame","liveBoxScore","startingLineup","pitchingStats"]);
-  await Promise.allSettled([main,
-    run(loadJudge,["judgeSeason"]),run(loadStandings,["standings","standingsWest"]),
-    run(loadRecentUpcoming,["recent","upcoming"]),run(loadLeaders,["leaders"]),
-    run(loadTopYankees,["topYankees"]),run(loadPlayoffRace,["playoffRace"])]);
-  const failed=refreshFailures.size>0;
-  const time=new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"});
-  $("updated").textContent=failed ? `Some data unavailable • Retrying • ${time}` : `Updated ${time}`;
-  $("refreshBtn").disabled=false;
-  const untilStart=selectedGame?.status?.abstractGameState==="Preview"
-    ? new Date(selectedGame.gameDate)-Date.now() : Infinity;
-  const frequent=liveGame || finalHoldEnd>Date.now() || failed || untilStart<=15*60*1000;
-  const refreshMs=frequent ? 60*1000 : 15*60*1000;
-  timer=setTimeout(refreshAll,refreshMs);
-  const rate=frequent ? "Auto-refreshes every 1 minute" : "Auto-refreshes every 15 minutes";
-  $("refreshRateText").textContent=rate;
-  $("refreshFooterText").textContent=rate+".";
+
+  liveCountdownEnd=finalScoreHoldEnd;
+  updateLiveEndCountdown();
+  liveCountdownInterval=setInterval(updateLiveEndCountdown,1000);
+}
+
+async function refreshAll(){
+  liveGame=false;
+  $("updated").textContent="Refreshing…";
+  loadPromotions();
+  const loaders=[loadMainGame,loadJudge,loadStandings,loadRecentUpcoming,loadLeaders,loadTopYankees,loadStartingLineup,loadPitchingStats,loadPlayoffRace];
+  const jobs=loaders.map(fn=>Promise.resolve().then(()=>fn()));
+  const results=await Promise.allSettled(jobs);
+  if(results.some(r=>r.status==="rejected")) console.warn(results);
+  $("updated").textContent="Updated "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"});
+  clearTimeout(timer);
+  const refreshMs = liveGame ? 60 * 1000 : 15 * 60 * 1000;
+  timer=setTimeout(refreshAll, refreshMs);
+  const rate = liveGame ? "Auto-refreshes every 1 minute during live games" : "Auto-refreshes every 15 minutes";
+  if($("refreshRateText")) $("refreshRateText").textContent=rate;
+  if($("refreshFooterText")) $("refreshFooterText").textContent=liveGame
+    ? "LIVE GAME: Data refreshes automatically every 1 minute."
+    : "Data refreshes automatically every 15 minutes.";
   syncLiveCountdown();
 }
 $("refreshBtn").addEventListener("click",refreshAll);
 $("soundBtn").addEventListener("click",async()=>{
   soundEnabled=!soundEnabled;
-  saved.setItem("yankees-sounds",soundEnabled ? "on" : "off");
+  localStorage.setItem("yankees-sounds",soundEnabled ? "on" : "off");
   updateSoundButton();
   if(soundEnabled){
     await unlockAudio();
@@ -1761,8 +1908,19 @@ $("soundBtn").addEventListener("click",async()=>{
   }
 });
 
-updateSoundButton();
-refreshAll();
+function startDashboard(){
+  try{ sessionStorage.removeItem("yankees-live-countdown-end"); }catch(e){}
+  updateSoundButton();
+  refreshAll().catch(err=>{
+    console.error("Dashboard startup error",err);
+    if($("updated")) $("updated").textContent="Live data temporarily unavailable";
+  });
+}
+if(document.readyState==="loading"){
+  document.addEventListener("DOMContentLoaded",startDashboard,{once:true});
+}else{
+  startDashboard();
+}
 </script>
 </body>
 </html>
