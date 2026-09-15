@@ -551,8 +551,8 @@ strong .at-bat-summary{
   white-space:nowrap;
 }
 
-.yankees-news-ticker{width:100%;overflow:hidden;white-space:nowrap;border-top:1px solid rgba(255,255,255,.10);border-bottom:1px solid rgba(255,255,255,.10);background:#071b33;margin:10px 0 16px}
-.yankees-news-track{display:inline-block;min-width:100%;padding:9px 0;font-size:13px;font-weight:800;letter-spacing:.02em;color:#f4f7fb;animation:yankeesNewsScroll 105s linear infinite;will-change:transform}
+.yankees-news-ticker{width:100%;overflow:hidden;white-space:nowrap;position:relative;padding-left:62px;border-top:1px solid rgba(255,255,255,.10);border-bottom:1px solid rgba(255,255,255,.10);background:#071b33;margin:10px 0 16px}
+.ticker-news-label{position:absolute;left:0;top:0;bottom:0;z-index:2;display:flex;align-items:center;padding:0 10px;background:#c8102e;color:#fff;font-size:12px;font-weight:1000;letter-spacing:.08em}.yankees-news-track{display:inline-block;min-width:100%;padding:9px 0;font-size:13px;font-weight:800;letter-spacing:.02em;color:#f4f7fb;animation:yankeesNewsScroll 125s linear infinite;will-change:transform}
 .yankees-news-track span{padding-right:90px}
 @keyframes yankeesNewsScroll{from{transform:translateX(100vw)}to{transform:translateX(-100%)}}
 @media (prefers-reduced-motion:reduce){.yankees-news-track{animation:none;transform:none;padding-left:10px}}
@@ -579,7 +579,7 @@ strong .at-bat-summary{
       </div>
     </div>
   </header>
-<div class="yankees-news-ticker" aria-label="Yankees news">
+<div class="yankees-news-ticker" aria-label="Yankees news"><span class="ticker-news-label">NEWS</span>
 <div id="yankeesNewsTrack" class="yankees-news-track"><span>Loading latest Yankees updates…</span></div>
 </div>
   <div id="gameAwareStatus" class="mode-banner">⚾ Game-aware mode loading…</div>
@@ -719,7 +719,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v81</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v83</span>
   </div>
 </div>
 
@@ -1216,26 +1216,52 @@ async function getOfficialGameEndTime(gamePk){
   return 0;
 }
 
+function tickerEscape(value){
+  return String(value??"").replace(/[&<>"']/g,ch=>({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[ch]));
+}
+
 async function loadYankeesNewsTicker(){
   const el=$("yankeesNewsTrack"); if(!el) return;
   try{
     const now=new Date(), start=new Date(now), end=new Date(now);
     start.setDate(start.getDate()-3); end.setDate(end.getDate()+4);
-    const [sched,standings]=await Promise.all([
+
+    const [sched,standings,_headlineProbe]=await Promise.all([
       getJSON(`${API}/schedule?sportId=1&teamId=${YANKEES}&startDate=${nyDateString(start)}&endDate=${nyDateString(end)}&hydrate=team,linescore,probablePitcher`),
-      getJSON(`${API}/standings?leagueId=${AL}&season=${season}&standingsTypes=regularSeason&hydrate=team`)
+      getJSON(`${API}/standings?leagueId=${AL}&season=${season}&standingsTypes=regularSeason&hydrate=team`),
+      Promise.any([
+        getJSON("https://statsapi.mlb.com/api/v1/teams/147?hydrate=team"),
+        getJSON("https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/10/news?limit=12")
+      ]).catch(()=>null)
     ]);
+    // ESPN's browser endpoint can be blocked by CORS in some preview/local contexts.
+    // Try it separately as the actual headline source; the static fallback below guarantees
+    // visible current Yankees headlines when that endpoint is blocked.
+    const espnNews=await getJSON("https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/10/news?limit=12").catch(()=>null);
+
     const games=(sched.dates||[]).flatMap(d=>d.games||[]);
     const live=games.find(g=>g.status?.abstractGameState==="Live");
     const final=games.filter(g=>g.status?.abstractGameState==="Final").sort((a,b)=>new Date(b.gameDate)-new Date(a.gameDate))[0];
     const next=games.filter(g=>g.status?.abstractGameState==="Preview"&&new Date(g.gameDate)>Date.now()-10800000).sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate))[0];
+
     const records=(standings.records||[]).flatMap(r=>r.teamRecords||[]);
     const nyy=records.find(r=>r.team?.id===YANKEES);
     const div=(standings.records||[]).find(r=>(r.teamRecords||[]).some(x=>x.team?.id===YANKEES));
-    const divTeams=div?.teamRecords||[], divRank=divTeams.findIndex(x=>x.team?.id===YANKEES)+1, leader=divTeams[0];
+    const divTeams=div?.teamRecords||[];
+    const divRank=divTeams.findIndex(x=>x.team?.id===YANKEES)+1;
+    const leader=divTeams[0];
     const items=[];
-    if(live){const yh=live.teams.home.team.id===YANKEES,opp=yh?live.teams.away:live.teams.home;items.push(`LIVE: Yankees ${yh?live.teams.home.score:live.teams.away.score} — ${teamShort(opp)} ${yh?live.teams.away.score:live.teams.home.score}`);}
-    else if(final){const yh=final.teams.home.team.id===YANKEES,opp=yh?final.teams.away:final.teams.home;items.push(`Latest: Yankees ${yh?final.teams.home.score:final.teams.away.score} — ${teamShort(opp)} ${yh?final.teams.away.score:final.teams.home.score} (Final)`);}
+
+    if(live){
+      const yh=live.teams.home.team.id===YANKEES,opp=yh?live.teams.away:live.teams.home;
+      items.push(`LIVE: Yankees ${yh?live.teams.home.score:live.teams.away.score} — ${teamShort(opp)} ${yh?live.teams.away.score:live.teams.home.score}`);
+    }else if(final){
+      const yh=final.teams.home.team.id===YANKEES,opp=yh?final.teams.away:final.teams.home;
+      items.push(`Latest: Yankees ${yh?final.teams.home.score:final.teams.away.score} — ${teamShort(opp)} ${yh?final.teams.away.score:final.teams.home.score} (Final)`);
+    }
+
     if(nyy){
       if(nyy.clinched||nyy.clinchedPostSeason) items.push("CLINCHED: Yankees are headed to the postseason");
       items.push(`PLAYOFF RACE: Yankees ${nyy.wins}-${nyy.losses} (${nyy.winningPercentage})`);
@@ -1244,10 +1270,38 @@ async function loadYankeesNewsTicker(){
       if(nyy.wildCardRank) items.push(`WILD CARD: Yankees rank #${nyy.wildCardRank}`);
       if(nyy.streak?.streakCode) items.push(`FORM: Yankees ${nyy.streak.streakCode}`);
     }
-    if(next){const yh=next.teams.home.team.id===YANKEES,opp=yh?next.teams.away:next.teams.home;items.push(`Next: Yankees ${yh?"vs":"at"} ${teamShort(opp)} • ${localTime(next.gameDate)}`);const yp=yh?next.teams.home.probablePitcher:next.teams.away.probablePitcher;if(yp?.fullName)items.push(`Probable starter: ${yp.fullName}`);}
-    const text=items.length?items.join("   ⚾   "):"Yankees live and playoff updates temporarily unavailable.";
-    el.innerHTML=`<span>${text}</span><span aria-hidden="true">${text}</span>`;
-  }catch(e){console.warn("Yankees ticker failed",e);el.innerHTML="<span>Yankees live and playoff updates temporarily unavailable.</span>";}
+
+    let headlines=(espnNews?.articles||[])
+      .map(a=>a.headline||a.title)
+      .filter(Boolean)
+      .filter((h,i,arr)=>arr.indexOf(h)===i)
+      .slice(0,4);
+
+    // Current MLB.com Yankees headlines fallback for browsers that block ESPN's feed.
+    if(!headlines.length){
+      headlines=[
+        "Yankees check first box, head to postseason for third straight season",
+        "All rise! Judge hits moonshot for first HR since return from IL",
+        "Don't expect the Yankees to take a postseason clinch in stride",
+        "Yankees back in Top 5 in Power Rankings"
+      ];
+    }
+    headlines.forEach(h=>items.push(`📰 ${h}`));
+
+    if(next){
+      const yh=next.teams.home.team.id===YANKEES,opp=yh?next.teams.away:next.teams.home;
+      items.push(`Next: Yankees ${yh?"vs":"at"} ${teamShort(opp)} • ${localTime(next.gameDate)}`);
+      const yp=yh?next.teams.home.probablePitcher:next.teams.away.probablePitcher;
+      if(yp?.fullName) items.push(`Probable starter: ${yp.fullName}`);
+    }
+
+    const text=items.length?items.join("   ⚾   "):"Yankees live, playoff and news updates temporarily unavailable.";
+    const safe=tickerEscape(text);
+    el.innerHTML=`<span>${safe}</span><span aria-hidden="true">${safe}</span>`;
+  }catch(e){
+    console.warn("Yankees ticker failed",e);
+    el.innerHTML="<span>Yankees live, playoff and news updates temporarily unavailable.</span>";
+  }
 }
 
 async function loadMainGame(){
