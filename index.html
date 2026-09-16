@@ -730,7 +730,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v88</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v89</span>
   </div>
 </div>
 
@@ -2002,39 +2002,34 @@ function syncLiveCountdown(){
 }
 
 async function refreshAll(){
-  // Instant UI response: do not wait for any network request before ending "Refreshing…".
   liveGame=false;
-  const stamp=new Date();
-  if($("updated")) $("updated").textContent="Updating…";
+  if($("updated")) $("updated").textContent="Refreshing…";
   loadPromotions();
 
-  // Fire the game request immediately, but never block the UI on it.
-  Promise.resolve().then(()=>loadMainGame()).then(()=>{
-    // Once game state arrives, adjust cadence for live/non-live mode.
-    clearTimeout(timer);
-    const refreshMs=liveGame ? 60*1000 : 15*60*1000;
-    timer=setTimeout(refreshAll,refreshMs);
-    const rate=liveGame ? "Auto-refreshes every 1 minute during live games" : "Auto-refreshes every 15 minutes";
-    if($("refreshRateText")) $("refreshRateText").textContent=rate;
-    if($("refreshFooterText")) $("refreshFooterText").textContent=liveGame
-      ? "LIVE GAME: Data refreshes automatically every 1 minute."
-      : "Data refreshes automatically every 15 minutes.";
-    syncLiveCountdown();
-  }).catch(err=>console.warn("Main game refresh failed",err));
+  // Priority game refresh. Keep the visible Refreshing… wording until this finishes.
+  try{
+    await loadMainGame();
+  }catch(err){
+    console.warn("Main game refresh failed",err);
+  }
 
-  // All other sections update independently and concurrently.
+  if($("updated")) $("updated").textContent="Updated "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"});
+
+  clearTimeout(timer);
+  const refreshMs=liveGame ? 60*1000 : 15*60*1000;
+  timer=setTimeout(refreshAll,refreshMs);
+
+  const rate=liveGame ? "Auto-refreshes every 1 minute during live games" : "Auto-refreshes every 15 minutes";
+  if($("refreshRateText")) $("refreshRateText").textContent=rate;
+  if($("refreshFooterText")) $("refreshFooterText").textContent=liveGame
+    ? "LIVE GAME: Data refreshes automatically every 1 minute."
+    : "Data refreshes automatically every 15 minutes.";
+  syncLiveCountdown();
+
+  // Secondary feeds continue refreshing independently in the background.
   [loadYankeesNewsTicker,loadJudge,loadStandings,loadRecentUpcoming,loadLeaders,
    loadTopYankees,loadStartingLineup,loadPitchingStats,loadPlayoffRace]
     .forEach(fn=>Promise.resolve().then(()=>fn()).catch(err=>console.warn(fn.name+" refresh failed",err)));
-
-  // UI is responsive immediately; individual cards replace their data as each feed returns.
-  requestAnimationFrame(()=>{
-    if($("updated")) $("updated").textContent="Updated "+stamp.toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"});
-  });
-
-  // Safety schedule in case the main-game request fails completely.
-  clearTimeout(timer);
-  timer=setTimeout(refreshAll,15*60*1000);
 }
 $("refreshBtn").addEventListener("click",refreshAll);
 $("soundBtn").addEventListener("click",async()=>{
