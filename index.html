@@ -730,7 +730,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v89</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v90</span>
   </div>
 </div>
 
@@ -829,17 +829,17 @@ function playRunCheer(){
 
 
 function playHomeRunSound(){
-  if(!soundEnabled) return;
-  unlockAudio().then(()=>{
-    /* Bat crack + celebration, normalized to the same overall level as the other effects. */
-    noiseBurst(0,.045,.10);
-    tone(118,0,.045,.06,"square");
-    noiseBurst(.08,.42,.10);
-    noiseBurst(.28,.62,.07);
-    tone(196,.12,.18,.06,"triangle");
-    tone(392,.34,.20,.06,"sawtooth");
-    tone(523,.56,.30,.06,"sawtooth");
-  });
+  if(!soundsEnabled) return;
+  const siren=document.getElementById("hrGoalSiren");
+  if(!siren) return;
+  try{
+    siren.pause();
+    siren.currentTime=0;
+    siren.volume=1;
+    siren.play().catch(err=>console.warn("Home run siren playback blocked until browser interaction",err));
+  }catch(err){
+    console.warn("Home run siren playback failed",err);
+  }
 }
 
 function showHomeRunCelebration(){
@@ -2058,5 +2058,5 @@ if(document.readyState==="loading"){
   startDashboard();
 }
 </script>
-</body>
+<audio id="hrGoalSiren" preload="auto" src="goal_siren.mp3"></audio>\n</body>
 </html>
