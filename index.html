@@ -810,9 +810,6 @@ strong .at-bat-summary{
       </div>
     </div>
   </header>
-<div class="yankees-news-ticker" aria-label="Yankees news"><span class="ticker-news-label">NEWS</span>
-<div id="yankeesNewsTrack" class="yankees-news-track"><span>Loading latest Yankees updates…</span></div>
-</div>
 <div class="playbyplay-ticker" aria-label="Yankees live play by play">
   <span class="playbyplay-label">PLAY-BY-PLAY</span>
   <div id="playByPlayTrack" class="playbyplay-track"><span>Waiting for Yankees game…</span></div>
@@ -954,7 +951,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v100</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v101</span>
   </div>
 </div>
 
@@ -2379,7 +2376,7 @@ async function refreshAll(){
   syncLiveCountdown();
 
   // Secondary feeds continue refreshing independently in the background.
-  [loadYankeesNewsTicker,loadPlayByPlay,loadJudge,loadStandings,loadRecentUpcoming,loadLeaders,
+  [loadPlayByPlay,loadJudge,loadStandings,loadRecentUpcoming,loadLeaders,
    loadTopYankees,loadStartingLineup,loadPitchingStats,loadPlayoffRace]
     .forEach(fn=>Promise.resolve().then(()=>fn()).catch(err=>console.warn(fn.name+" refresh failed",err)));
 }
