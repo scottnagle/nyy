@@ -558,6 +558,15 @@ strong .at-bat-summary{
 @media (prefers-reduced-motion:reduce){.yankees-news-track{animation:none;transform:none;padding-left:10px}}
 .yankees-news-track.fade-out{opacity:0}
 .yankees-news-track{transform:none!important;text-align:center;width:100%}
+.ps-status{font-size:18px;font-weight:1000;text-align:center;padding:11px 14px;border-radius:12px;margin-bottom:12px;background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.38)}
+.ps-status.ps-warn{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.38)}
+.ps-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.ps-card{background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.11);border-radius:12px;padding:13px;text-align:center}
+.ps-card span{display:block;font-size:10px;font-weight:900;letter-spacing:.09em;opacity:.72}
+.ps-card strong{display:block;font-size:24px;margin:5px 0 2px}
+.ps-card small{font-size:11px;opacity:.72}
+.ps-explain{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.035);font-size:11px;line-height:1.45;opacity:.82}
+@media(max-width:700px){.ps-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
@@ -721,7 +730,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v85</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v88</span>
   </div>
 </div>
 
@@ -904,7 +913,7 @@ const logo = id => `https://www.mlbstatic.com/team-logos/${id}.svg`;
 
 async function getJSON(url){
   const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),12000);
+  const timeout=setTimeout(()=>controller.abort(),5000);
   try{
     const r=await fetch(url,{
       cache:"no-store",
@@ -1535,38 +1544,42 @@ async function loadPlayoffRace(){
   const box=$("playoffRace");
   try{
     const data=await getJSON(`${API}/standings?leagueId=${AL}&season=${season}&standingsTypes=regularSeason&hydrate=team,division`);
-    const records=data.records||[];
-    const teams=records.flatMap(r=>r.teamRecords||[]);
-    const y=teams.find(t=>t.team.id===YANKEES);
-    if(!y) throw new Error("No Yankees standings");
-
-    const divisionWinners=records.map(r=>(r.teamRecords||[])[0]).filter(Boolean)
+    const records=data.records||[], teams=records.flatMap(r=>r.teamRecords||[]);
+    const y=teams.find(x=>x.team.id===YANKEES); if(!y) throw new Error("No Yankees standings");
+    const div=records.find(r=>(r.teamRecords||[]).some(x=>x.team.id===YANKEES));
+    const divTeams=div?.teamRecords||[], divRank=divTeams.findIndex(x=>x.team.id===YANKEES)+1;
+    const divLeader=divTeams[0];
+    const winners=records.map(r=>(r.teamRecords||[])[0]).filter(Boolean);
+    const winnerIds=new Set(winners.map(x=>x.team.id));
+    const wc=teams.filter(x=>!winnerIds.has(x.team.id))
       .sort((a,b)=>parseFloat(b.winningPercentage||0)-parseFloat(a.winningPercentage||0));
-    const winnerIds=new Set(divisionWinners.map(t=>t.team.id));
-    const wildCards=teams.filter(t=>!winnerIds.has(t.team.id))
-      .sort((a,b)=>parseFloat(b.winningPercentage||0)-parseFloat(a.winningPercentage||0));
+    const wcRank=wc.findIndex(x=>x.team.id===YANKEES)+1;
 
-    let seed=null, position="";
-    const divIndex=divisionWinners.findIndex(t=>t.team.id===YANKEES);
-    const wcIndex=wildCards.findIndex(t=>t.team.id===YANKEES);
-    if(divIndex>=0){ seed=divIndex+1; position=`AL Division Leader • Seed #${seed}`; }
-    else if(wcIndex>=0 && wcIndex<3){ seed=4+wcIndex; position=`AL Wild Card #${wcIndex+1} • Seed #${seed}`; }
-    else if(wcIndex>=0){ position=`Outside playoff field • WC #${wcIndex+1}`; }
-    else position="Playoff position unavailable";
+    let status, statusClass="ps-good", seedText="—";
+    if(divRank===1){
+      const seed=[...winners].sort((a,b)=>parseFloat(b.winningPercentage||0)-parseFloat(a.winningPercentage||0))
+        .findIndex(x=>x.team.id===YANKEES)+1;
+      status="AL East Leader"; seedText=seed>0?`#${seed}`:"—";
+    }else if(wcRank>0 && wcRank<=3){
+      status=`Wild Card #${wcRank}`; seedText=`#${3+wcRank}`;
+    }else{
+      status="Outside Current Playoff Field"; statusClass="ps-warn";
+    }
 
+    const gb=(divRank===1)?"—":(y.gamesBack||"—");
+    const clinched=(y.clinched||y.clinchedPostSeason)?"YES":"NOT YET";
     box.innerHTML=`
-      <div class="playoff-status">${position}</div>
-      <div class="stats" style="grid-template-columns:repeat(2,1fr)">
-        <div class="stat"><b>${y.divisionRank ?? "—"}</b><span>AL EAST RANK</span></div>
-        <div class="stat"><b>${y.gamesBack ?? "—"}</b><span>DIVISION GB</span></div>
-        <div class="stat"><b>${y.wildCardRank ?? (wcIndex>=0?wcIndex+1:"—")}</b><span>WILD CARD RANK</span></div>
-        <div class="stat"><b>${y.wildCardGamesBack ?? "—"}</b><span>WC GB</span></div>
+      <div class="ps-status ${statusClass}">${status}</div>
+      <div class="ps-grid">
+        <div class="ps-card"><span>RECORD</span><strong>${y.wins}-${y.losses}</strong><small>${y.winningPercentage||""}</small></div>
+        <div class="ps-card"><span>AL EAST</span><strong>${divRank?`#${divRank}`:"—"}</strong><small>${divRank===1?"Division leader":`${gb} GB`}</small></div>
+        <div class="ps-card"><span>PLAYOFF SEED</span><strong>${seedText}</strong><small>Current AL position</small></div>
+        <div class="ps-card"><span>POSTSEASON</span><strong>${clinched}</strong><small>${clinched==="YES"?"Berth clinched":"Still in race"}</small></div>
       </div>
-      <div class="tiny" style="margin-top:12px"><strong>If the season ended today:</strong> ${seed ? `Yankees would be AL seed #${seed}.` : "Yankees would be outside the current AL playoff field."}</div>`;
+      <div class="ps-explain"><b>How to read this:</b> Division winners take AL seeds 1–3. The three Wild Card teams take seeds 4–6. This snapshot uses current MLB standings and is not a tiebreaker projection.</div>`;
   }catch(e){
-    box.innerHTML='<div class="tiny">Playoff race data temporarily unavailable.</div>';
+    box.innerHTML='<div class="muted">Playoff snapshot temporarily unavailable.</div>';
   }
-  box.classList.remove("loading");
 }
 
 
@@ -1989,23 +2002,39 @@ function syncLiveCountdown(){
 }
 
 async function refreshAll(){
+  // Instant UI response: do not wait for any network request before ending "Refreshing…".
   liveGame=false;
-  $("updated").textContent="Refreshing…";
+  const stamp=new Date();
+  if($("updated")) $("updated").textContent="Updating…";
   loadPromotions();
-  const loaders=[loadMainGame,loadYankeesNewsTicker,loadJudge,loadStandings,loadRecentUpcoming,loadLeaders,loadTopYankees,loadStartingLineup,loadPitchingStats,loadPlayoffRace];
-  const jobs=loaders.map(fn=>Promise.resolve().then(()=>fn()));
-  const results=await Promise.allSettled(jobs);
-  if(results.some(r=>r.status==="rejected")) console.warn(results);
-  $("updated").textContent="Updated "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"});
+
+  // Fire the game request immediately, but never block the UI on it.
+  Promise.resolve().then(()=>loadMainGame()).then(()=>{
+    // Once game state arrives, adjust cadence for live/non-live mode.
+    clearTimeout(timer);
+    const refreshMs=liveGame ? 60*1000 : 15*60*1000;
+    timer=setTimeout(refreshAll,refreshMs);
+    const rate=liveGame ? "Auto-refreshes every 1 minute during live games" : "Auto-refreshes every 15 minutes";
+    if($("refreshRateText")) $("refreshRateText").textContent=rate;
+    if($("refreshFooterText")) $("refreshFooterText").textContent=liveGame
+      ? "LIVE GAME: Data refreshes automatically every 1 minute."
+      : "Data refreshes automatically every 15 minutes.";
+    syncLiveCountdown();
+  }).catch(err=>console.warn("Main game refresh failed",err));
+
+  // All other sections update independently and concurrently.
+  [loadYankeesNewsTicker,loadJudge,loadStandings,loadRecentUpcoming,loadLeaders,
+   loadTopYankees,loadStartingLineup,loadPitchingStats,loadPlayoffRace]
+    .forEach(fn=>Promise.resolve().then(()=>fn()).catch(err=>console.warn(fn.name+" refresh failed",err)));
+
+  // UI is responsive immediately; individual cards replace their data as each feed returns.
+  requestAnimationFrame(()=>{
+    if($("updated")) $("updated").textContent="Updated "+stamp.toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"});
+  });
+
+  // Safety schedule in case the main-game request fails completely.
   clearTimeout(timer);
-  const refreshMs = liveGame ? 60 * 1000 : 15 * 60 * 1000;
-  timer=setTimeout(refreshAll, refreshMs);
-  const rate = liveGame ? "Auto-refreshes every 1 minute during live games" : "Auto-refreshes every 15 minutes";
-  if($("refreshRateText")) $("refreshRateText").textContent=rate;
-  if($("refreshFooterText")) $("refreshFooterText").textContent=liveGame
-    ? "LIVE GAME: Data refreshes automatically every 1 minute."
-    : "Data refreshes automatically every 15 minutes.";
-  syncLiveCountdown();
+  timer=setTimeout(refreshAll,15*60*1000);
 }
 $("refreshBtn").addEventListener("click",refreshAll);
 $("soundBtn").addEventListener("click",async()=>{
