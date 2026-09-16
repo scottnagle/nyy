@@ -635,6 +635,83 @@ strong .at-bat-summary{
   }
 }
 
+
+/* v94 mobile ticker fix: animate against the visible ticker viewport */
+@media (max-width:700px){
+  .yankees-news-ticker{
+    display:flex!important;
+    overflow:hidden!important;
+    position:relative!important;
+  }
+  .ticker-news-label{
+    flex:0 0 auto!important;
+    position:relative!important;
+    z-index:2!important;
+  }
+  .yankees-news-track{
+    flex:1 1 auto!important;
+    min-width:0!important;
+    width:auto!important;
+    max-width:none!important;
+    overflow:hidden!important;
+    white-space:nowrap!important;
+    padding-left:0!important;
+    opacity:1!important;
+    animation:none!important;
+  }
+  .yankees-news-track.mobile-scroll{
+    overflow:visible!important;
+    width:max-content!important;
+    min-width:max-content!important;
+    flex:none!important;
+    will-change:transform;
+    animation:v94MobileNewsScroll 38s linear infinite!important;
+  }
+  .yankees-news-track.mobile-scroll.fade-out{opacity:1!important}
+  @keyframes v94MobileNewsScroll{
+    0%{transform:translateX(100vw)}
+    100%{transform:translateX(-100%)}
+  }
+}
+
+
+/* v95 iPhone Safari ticker: JS-driven pixel scrolling */
+@media (max-width:700px){
+  .yankees-news-ticker{
+    display:flex!important;
+    overflow:hidden!important;
+  }
+  .ticker-news-label{flex:0 0 auto!important;z-index:2!important}
+  .yankees-news-track{
+    position:relative!important;
+    flex:1 1 0!important;
+    min-width:0!important;
+    width:auto!important;
+    overflow:hidden!important;
+    white-space:nowrap!important;
+    padding:0!important;
+    animation:none!important;
+    transform:none!important;
+    opacity:1!important;
+  }
+  .yankees-news-track.mobile-scroll{
+    width:auto!important;
+    min-width:0!important;
+    overflow:hidden!important;
+    animation:none!important;
+    transform:none!important;
+  }
+  .mobile-news-inner{
+    position:absolute;
+    left:0;
+    top:50%;
+    transform:translate3d(0,-50%,0);
+    -webkit-transform:translate3d(0,-50%,0);
+    white-space:nowrap;
+    will-change:transform;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -798,7 +875,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v93</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v95</span>
   </div>
 </div>
 
@@ -1301,6 +1378,35 @@ function tickerEscape(value){
   }[ch]));
 }
 
+let mobileNewsRAF=null;
+function stopMobileNewsScroll(){
+  if(mobileNewsRAF){ cancelAnimationFrame(mobileNewsRAF); mobileNewsRAF=null; }
+}
+function startMobileNewsScroll(el,items){
+  stopMobileNewsScroll();
+  el.classList.add("mobile-scroll");
+  el.innerHTML="";
+  const inner=document.createElement("span");
+  inner.className="mobile-news-inner";
+  inner.textContent=(items||[]).join("   •   ");
+  el.appendChild(inner);
+
+  let x=el.clientWidth+20;
+  let last=performance.now();
+  const speed=42; // pixels per second
+  function frame(now){
+    const dt=Math.min(50,now-last)/1000;
+    last=now;
+    x-=speed*dt;
+    const w=inner.scrollWidth;
+    if(x < -w-30) x=el.clientWidth+20;
+    inner.style.transform=`translate3d(${x}px,-50%,0)`;
+    inner.style.webkitTransform=`translate3d(${x}px,-50%,0)`;
+    mobileNewsRAF=requestAnimationFrame(frame);
+  }
+  mobileNewsRAF=requestAnimationFrame(frame);
+}
+
 let fadeNewsTimer=null, fadeNewsItems=[], fadeNewsIndex=0;
 function startFadeNewsTicker(items){
   const el=$("yankeesNewsTrack"); if(!el) return;
@@ -1308,9 +1414,12 @@ function startFadeNewsTicker(items){
   clearInterval(fadeNewsTimer); fadeNewsIndex=0;
   el.classList.remove("fade-out");
   if(window.matchMedia("(max-width:700px)").matches){
-    el.textContent=fadeNewsItems.join("   •   ");
+    startMobileNewsScroll(el,fadeNewsItems);
     return;
   }
+  stopMobileNewsScroll();
+  el.classList.remove("mobile-scroll");
+  el.innerHTML="";
   el.textContent=fadeNewsItems[0];
   fadeNewsTimer=setInterval(()=>{
     el.classList.add("fade-out");
@@ -2115,6 +2224,19 @@ $("soundBtn").addEventListener("click",async()=>{
     tone(523,0,.10,.035,"triangle");
     tone(659,.10,.13,.04,"triangle");
   }
+});
+
+
+let mobileNewsResizeTimer=null;
+window.addEventListener("resize",()=>{
+  clearTimeout(mobileNewsResizeTimer);
+  mobileNewsResizeTimer=setTimeout(()=>{
+    const el=$("yankeesNewsTrack");
+    if(el && fadeNewsItems.length){
+      if(window.matchMedia("(max-width:700px)").matches) startMobileNewsScroll(el,fadeNewsItems);
+      else startFadeNewsTicker(fadeNewsItems);
+    }
+  },150);
 });
 
 function startDashboard(){
