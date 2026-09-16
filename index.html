@@ -615,6 +615,26 @@ strong .at-bat-summary{
   .yankees-news-ticker{margin-left:0!important;margin-right:0!important}
 }
 
+
+/* v93: mobile NEWS scrolls horizontally; desktop keeps fade ticker */
+@media (max-width:700px){
+  .yankees-news-ticker{overflow:hidden!important}
+  .yankees-news-track{
+    width:max-content!important;
+    max-width:none!important;
+    white-space:nowrap!important;
+    opacity:1!important;
+    transform:translateX(0);
+    animation:v93MobileNewsScroll 24s linear infinite!important;
+    padding-left:100%;
+  }
+  .yankees-news-track.fade-out{opacity:1!important}
+  @keyframes v93MobileNewsScroll{
+    from{transform:translateX(0)}
+    to{transform:translateX(-100%)}
+  }
+}
+
 </style>
 </head>
 <body>
@@ -778,7 +798,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v92</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v93</span>
   </div>
 </div>
 
@@ -1286,7 +1306,12 @@ function startFadeNewsTicker(items){
   const el=$("yankeesNewsTrack"); if(!el) return;
   fadeNewsItems=(items||[]).filter(Boolean); if(!fadeNewsItems.length) return;
   clearInterval(fadeNewsTimer); fadeNewsIndex=0;
-  el.classList.remove("fade-out"); el.textContent=fadeNewsItems[0];
+  el.classList.remove("fade-out");
+  if(window.matchMedia("(max-width:700px)").matches){
+    el.textContent=fadeNewsItems.join("   •   ");
+    return;
+  }
+  el.textContent=fadeNewsItems[0];
   fadeNewsTimer=setInterval(()=>{
     el.classList.add("fade-out");
     setTimeout(()=>{
