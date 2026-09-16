@@ -567,6 +567,54 @@ strong .at-bat-summary{
 .ps-card small{font-size:11px;opacity:.72}
 .ps-explain{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.035);font-size:11px;line-height:1.45;opacity:.82}
 @media(max-width:700px){.ps-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* v91: no green frame around the first/live game section */
+.mode-live, .mode-live.card, #mainGameSection.mode-live{
+  border-color:rgba(255,255,255,.10) !important;
+  box-shadow:none !important;
+  outline:none !important;
+}
+
+/* v92 mobile: one dashboard section/card per row */
+@media (max-width:700px){
+  html,body{max-width:100%;overflow-x:hidden}
+  body{padding-left:0!important;padding-right:0!important}
+  .wrap,.container,main{width:100%!important;max-width:100%!important}
+  header{padding-left:12px!important;padding-right:12px!important}
+  .grid,.grid-2,.grid-3,.ps-grid{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr)!important;
+    width:100%!important;
+  }
+  section.grid, section.grid-2, section.grid-3{
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+  .card,.panel,.section,.pitch-team,.ps-card{
+    grid-column:1 / -1!important;
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    box-sizing:border-box!important;
+  }
+  .pad{min-width:0!important}
+  #mainGameSection,#pregameFeatures,#standingsAndSchedule{
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+  #standingsAndSchedule > *, #pregameFeatures > *, #mainGameSection > *{
+    grid-column:1 / -1!important;
+  }
+  .ps-grid{gap:10px!important}
+  .top-player,.lineup-row,.game-row,.leader,.promo{
+    min-width:0!important;
+    max-width:100%!important;
+  }
+  .top-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .live-statline{flex-wrap:wrap!important}
+  table{min-width:0}
+  .table-wrap,.boxscore-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .yankees-news-ticker{margin-left:0!important;margin-right:0!important}
+}
+
 </style>
 </head>
 <body>
@@ -730,7 +778,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v90</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v92</span>
   </div>
 </div>
 
