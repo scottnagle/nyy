@@ -737,6 +737,25 @@ strong .at-bat-summary{
   .yankees-news-track .mobile-news-marquee{display:none!important}
 }
 
+
+/* v97: keep red NEWS label flush-left and slow mobile ticker */
+@media (max-width:700px){
+  .yankees-news-ticker{
+    padding-left:0!important;
+    margin-left:0!important;
+    align-items:stretch!important;
+  }
+  .ticker-news-label{
+    margin-left:0!important;
+    left:0!important;
+    align-self:stretch!important;
+    display:flex!important;
+    align-items:center!important;
+    flex:0 0 auto!important;
+    border-radius:14px 0 0 14px!important;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -900,7 +919,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v96</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v97</span>
   </div>
 </div>
 
@@ -1446,7 +1465,7 @@ function startFadeNewsTicker(items){
     mq.className="mobile-news-marquee";
     mq.setAttribute("behavior","scroll");
     mq.setAttribute("direction","left");
-    mq.setAttribute("scrollamount","4");
+    mq.setAttribute("scrollamount","2");
     mq.setAttribute("scrolldelay","20");
     mq.setAttribute("truespeed","");
     mq.textContent=fadeNewsItems.join("   •   ");
