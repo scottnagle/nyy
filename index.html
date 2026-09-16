@@ -712,6 +712,31 @@ strong .at-bat-summary{
   }
 }
 
+
+/* v96 mobile NEWS: native Safari-compatible marquee */
+.mobile-news-marquee{display:none}
+@media (max-width:700px){
+  .yankees-news-track{
+    flex:1 1 0!important;
+    min-width:0!important;
+    overflow:hidden!important;
+    opacity:1!important;
+    animation:none!important;
+    transform:none!important;
+    white-space:nowrap!important;
+  }
+  .yankees-news-track .mobile-news-marquee{
+    display:block!important;
+    width:100%!important;
+    white-space:nowrap!important;
+  }
+  .yankees-news-track .desktop-news-text{display:none!important}
+}
+@media (min-width:701px){
+  .yankees-news-track .desktop-news-text{display:inline!important}
+  .yankees-news-track .mobile-news-marquee{display:none!important}
+}
+
 </style>
 </head>
 <body>
@@ -875,7 +900,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v95</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v96</span>
   </div>
 </div>
 
@@ -1412,20 +1437,36 @@ function startFadeNewsTicker(items){
   const el=$("yankeesNewsTrack"); if(!el) return;
   fadeNewsItems=(items||[]).filter(Boolean); if(!fadeNewsItems.length) return;
   clearInterval(fadeNewsTimer); fadeNewsIndex=0;
-  el.classList.remove("fade-out");
+  stopMobileNewsScroll();
+
   if(window.matchMedia("(max-width:700px)").matches){
-    startMobileNewsScroll(el,fadeNewsItems);
+    el.classList.remove("fade-out","mobile-scroll");
+    el.innerHTML="";
+    const mq=document.createElement("marquee");
+    mq.className="mobile-news-marquee";
+    mq.setAttribute("behavior","scroll");
+    mq.setAttribute("direction","left");
+    mq.setAttribute("scrollamount","4");
+    mq.setAttribute("scrolldelay","20");
+    mq.setAttribute("truespeed","");
+    mq.textContent=fadeNewsItems.join("   •   ");
+    el.appendChild(mq);
+    if(typeof mq.start==="function") mq.start();
     return;
   }
-  stopMobileNewsScroll();
+
   el.classList.remove("mobile-scroll");
   el.innerHTML="";
-  el.textContent=fadeNewsItems[0];
+  const span=document.createElement("span");
+  span.className="desktop-news-text";
+  span.textContent=fadeNewsItems[0];
+  el.appendChild(span);
+
   fadeNewsTimer=setInterval(()=>{
     el.classList.add("fade-out");
     setTimeout(()=>{
       fadeNewsIndex=(fadeNewsIndex+1)%fadeNewsItems.length;
-      el.textContent=fadeNewsItems[fadeNewsIndex];
+      span.textContent=fadeNewsItems[fadeNewsIndex];
       el.classList.remove("fade-out");
     },850);
   },6000);
@@ -2227,17 +2268,6 @@ $("soundBtn").addEventListener("click",async()=>{
 });
 
 
-let mobileNewsResizeTimer=null;
-window.addEventListener("resize",()=>{
-  clearTimeout(mobileNewsResizeTimer);
-  mobileNewsResizeTimer=setTimeout(()=>{
-    const el=$("yankeesNewsTrack");
-    if(el && fadeNewsItems.length){
-      if(window.matchMedia("(max-width:700px)").matches) startMobileNewsScroll(el,fadeNewsItems);
-      else startFadeNewsTicker(fadeNewsItems);
-    }
-  },150);
-});
 
 function startDashboard(){
   try{ sessionStorage.removeItem("yankees-live-countdown-end"); }catch(e){}
