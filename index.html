@@ -810,7 +810,7 @@ strong .at-bat-summary{
       </div>
     </div>
   </header>
-<div class="playbyplay-ticker" aria-label="Yankees live play by play">
+<div id="playByPlaySection" class="playbyplay-ticker" aria-label="Yankees live play by play">
   <span class="playbyplay-label">PLAY-BY-PLAY</span>
   <div id="playByPlayTrack" class="playbyplay-track"><span>Waiting for Yankees game…</span></div>
 </div>
@@ -951,7 +951,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v101</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v102</span>
   </div>
 </div>
 
@@ -2236,7 +2236,15 @@ let liveCountdownInterval=null;
 let liveCountdownEnd=0;
 let finalScoreHoldEnd=0;
 
+function syncPlayByPlayVisibility(){
+  const section=$("playByPlaySection");
+  if(!section) return;
+  const inFinalHold=finalScoreHoldEnd && Date.now() < finalScoreHoldEnd;
+  section.style.display=(liveGame || inFinalHold) ? "flex" : "none";
+}
+
 function updateLiveEndCountdown(){
+  syncPlayByPlayVisibility();
   const el=$("liveEndCountdown");
   if(!el) return;
   if(!liveCountdownEnd){
@@ -2257,6 +2265,7 @@ function updateLiveEndCountdown(){
     liveCountdownEnd=0;
     finalScoreHoldEnd=0;
     el.style.display="none";
+    syncPlayByPlayVisibility();
     refreshAll();
   }
 }
@@ -2328,9 +2337,19 @@ async function loadPlayByPlay(){
     const g=games[0];
     const state=g.status?.abstractGameState||"";
     if(state!=="Live"){
-      renderPlayByPlayTicker(state==="Final"
-        ? ["FINAL • Today's Yankees game has ended. Live play-by-play resumes next game."]
-        : fallback);
+      syncPlayByPlayVisibility();
+      if(state==="Final" && finalScoreHoldEnd && Date.now() < finalScoreHoldEnd){
+        const data=await getJSON(`${API}/game/${g.gamePk}/playByPlay`);
+        const plays=data.allPlays||[];
+        const recent=plays.slice(-8).reverse().map(p=>{
+          const inning=p.about?.inning ? `${p.about?.halfInning==="top"?"Top":"Bot"} ${p.about.inning}` : "";
+          const desc=p.result?.description || p.result?.event || "";
+          const away=p.result?.awayScore, home=p.result?.homeScore;
+          const score=(away!=null && home!=null) ? ` • ${g.teams.away.team.name.replace("New York ","")} ${away}, ${g.teams.home.team.name.replace("New York ","")} ${home}` : "";
+          return `${inning}${inning&&desc?" • ":""}${desc}${score}`;
+        }).filter(Boolean);
+        renderPlayByPlayTicker(recent.length?recent:["FINAL • Game complete."]);
+      }
       return;
     }
 
@@ -2358,6 +2377,7 @@ async function refreshAll(){
   // Priority game refresh. Keep the visible Refreshing… wording until this finishes.
   try{
     await loadMainGame();
+    syncPlayByPlayVisibility();
   }catch(err){
     console.warn("Main game refresh failed",err);
   }
