@@ -756,6 +756,37 @@ strong .at-bat-summary{
   }
 }
 
+
+/* v100 LIVE PLAY-BY-PLAY ticker */
+.playbyplay-ticker{
+  display:flex;align-items:stretch;overflow:hidden;margin-top:7px;
+  border:1px solid rgba(255,255,255,.11);border-radius:14px;
+  background:rgba(255,255,255,.035);min-height:38px;
+}
+.playbyplay-label{
+  flex:0 0 auto;display:flex;align-items:center;padding:0 12px;
+  font-size:10px;font-weight:1000;letter-spacing:.08em;
+  background:#123a68;color:#fff;border-radius:14px 0 0 14px;z-index:2;
+}
+.playbyplay-track{
+  flex:1 1 auto;min-width:0;display:flex;align-items:center;padding:0 13px;
+  font-size:12px;font-weight:800;white-space:nowrap;overflow:hidden;
+  transition:opacity .85s ease;opacity:1;
+}
+.playbyplay-track.fade-out{opacity:0}
+.mobile-pbp-marquee{display:none}
+@media(max-width:700px){
+  .playbyplay-ticker{margin-left:0!important;padding-left:0!important}
+  .playbyplay-label{margin-left:0!important;left:0!important;flex:0 0 auto!important}
+  .playbyplay-track{padding:0!important;opacity:1!important;animation:none!important;transform:none!important}
+  .playbyplay-track .mobile-pbp-marquee{display:block!important;width:100%!important;white-space:nowrap!important}
+  .playbyplay-track .desktop-pbp-text{display:none!important}
+}
+@media(min-width:701px){
+  .playbyplay-track .desktop-pbp-text{display:inline!important}
+  .playbyplay-track .mobile-pbp-marquee{display:none!important}
+}
+
 </style>
 </head>
 <body>
@@ -781,6 +812,10 @@ strong .at-bat-summary{
   </header>
 <div class="yankees-news-ticker" aria-label="Yankees news"><span class="ticker-news-label">NEWS</span>
 <div id="yankeesNewsTrack" class="yankees-news-track"><span>Loading latest Yankees updates…</span></div>
+</div>
+<div class="playbyplay-ticker" aria-label="Yankees live play by play">
+  <span class="playbyplay-label">PLAY-BY-PLAY</span>
+  <div id="playByPlayTrack" class="playbyplay-track"><span>Waiting for Yankees game…</span></div>
 </div>
   <div id="gameAwareStatus" class="mode-banner">⚾ Game-aware mode loading…</div>
   <div id="hrCelebration" class="hr-celebration" aria-live="polite">💥 YANKEES HOME RUN! ⚾</div>
@@ -919,7 +954,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v99</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v100</span>
   </div>
 </div>
 
@@ -2246,6 +2281,78 @@ function syncLiveCountdown(){
   liveCountdownInterval=setInterval(updateLiveEndCountdown,1000);
 }
 
+
+let playByPlayTimer=null, playByPlayItems=[], playByPlayIndex=0;
+
+function renderPlayByPlayTicker(items){
+  const el=$("playByPlayTrack"); if(!el) return;
+  playByPlayItems=(items||[]).filter(Boolean);
+  if(!playByPlayItems.length) playByPlayItems=["PLAY-BY-PLAY • Begins when today's Yankees game starts."];
+  clearInterval(playByPlayTimer); playByPlayIndex=0;
+  el.classList.remove("fade-out");
+
+  if(window.matchMedia("(max-width:700px)").matches){
+    el.innerHTML="";
+    const mq=document.createElement("marquee");
+    mq.className="mobile-pbp-marquee";
+    mq.setAttribute("behavior","scroll");
+    mq.setAttribute("direction","left");
+    mq.setAttribute("scrollamount","1");
+    mq.setAttribute("scrolldelay","20");
+    mq.setAttribute("truespeed","");
+    mq.textContent=playByPlayItems.join("   •   ");
+    el.appendChild(mq);
+    if(typeof mq.start==="function") mq.start();
+    return;
+  }
+
+  el.innerHTML="";
+  const span=document.createElement("span");
+  span.className="desktop-pbp-text";
+  span.textContent=playByPlayItems[0];
+  el.appendChild(span);
+  playByPlayTimer=setInterval(()=>{
+    el.classList.add("fade-out");
+    setTimeout(()=>{
+      playByPlayIndex=(playByPlayIndex+1)%playByPlayItems.length;
+      span.textContent=playByPlayItems[playByPlayIndex];
+      el.classList.remove("fade-out");
+    },850);
+  },6000);
+}
+
+async function loadPlayByPlay(){
+  const fallback=["PLAY-BY-PLAY • Begins when today's Yankees game starts."];
+  try{
+    const date=nyDateString(new Date());
+    const sched=await getJSON(`${API}/schedule?sportId=1&teamId=${YANKEES}&date=${date}&hydrate=team`);
+    const games=(sched.dates||[]).flatMap(d=>d.games||[]);
+    if(!games.length){ renderPlayByPlayTicker(fallback); return; }
+    const g=games[0];
+    const state=g.status?.abstractGameState||"";
+    if(state!=="Live"){
+      renderPlayByPlayTicker(state==="Final"
+        ? ["FINAL • Today's Yankees game has ended. Live play-by-play resumes next game."]
+        : fallback);
+      return;
+    }
+
+    const data=await getJSON(`${API}/game/${g.gamePk}/playByPlay`);
+    const plays=data.allPlays||[];
+    const recent=plays.slice(-8).reverse().map(p=>{
+      const inning=p.about?.inning ? `${p.about?.halfInning==="top"?"Top":"Bot"} ${p.about.inning}` : "";
+      const desc=p.result?.description || p.result?.event || "";
+      const away=p.result?.awayScore, home=p.result?.homeScore;
+      const score=(away!=null && home!=null) ? ` • ${g.teams.away.team.name.replace("New York ","")} ${away}, ${g.teams.home.team.name.replace("New York ","")} ${home}` : "";
+      return `${inning}${inning&&desc?" • ":""}${desc}${score}`;
+    }).filter(Boolean);
+    renderPlayByPlayTicker(recent.length?recent:["LIVE • Waiting for the next play…"]);
+  }catch(e){
+    console.warn("Play-by-play refresh failed",e);
+    renderPlayByPlayTicker(["PLAY-BY-PLAY • Live feed temporarily unavailable."]);
+  }
+}
+
 async function refreshAll(){
   liveGame=false;
   if($("updated")) $("updated").textContent="Refreshing…";
@@ -2272,7 +2379,7 @@ async function refreshAll(){
   syncLiveCountdown();
 
   // Secondary feeds continue refreshing independently in the background.
-  [loadYankeesNewsTicker,loadJudge,loadStandings,loadRecentUpcoming,loadLeaders,
+  [loadYankeesNewsTicker,loadPlayByPlay,loadJudge,loadStandings,loadRecentUpcoming,loadLeaders,
    loadTopYankees,loadStartingLineup,loadPitchingStats,loadPlayoffRace]
     .forEach(fn=>Promise.resolve().then(()=>fn()).catch(err=>console.warn(fn.name+" refresh failed",err)));
 }
