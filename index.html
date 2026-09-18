@@ -952,7 +952,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v106</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v107</span>
   </div>
 </div>
 
@@ -1070,11 +1070,11 @@ function playHomeRunSound(){
 function showHomeRunCelebration(){
   const el=$("hrCelebration");
   if(!el) return;
+  clearTimeout(window.__hrCelebrationTimer);
   el.classList.remove("show");
   void el.offsetWidth;
   el.classList.add("show");
-  clearTimeout(hrBannerTimer);
-  hrBannerTimer=setTimeout(()=>el.classList.remove("show"),6500);
+  window.__hrCelebrationTimer=setTimeout(()=>el.classList.remove("show"),6500);
 }
 
 function updateSoundButton(){
@@ -2314,7 +2314,8 @@ $("testHrSoundBtn")?.addEventListener("click",async()=>{
     siren.currentTime=0;
     siren.volume=1;
     await siren.play();
-    if(status) status.textContent="✅ HR MP3 playing";
+    showHomeRunCelebration();
+    if(status) status.textContent="✅ HR MP3 + HOME RUN banner working";
   }catch(err){
     console.error("HR TEST FAILED",err);
     if(status) status.textContent=`❌ HR MP3: ${err?.name||"Playback error"}`;
