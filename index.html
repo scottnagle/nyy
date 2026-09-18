@@ -830,9 +830,7 @@ strong .at-bat-summary{
         <div class="sub" id="updated" style="margin-top:0">Loading…</div><div id="liveEndCountdown" class="live-end-countdown" style="display:none">FINAL SCORE ENDS IN 60:00</div>
       </div>
       <div style="display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap;margin-top:7px">
-        <button id="soundBtn" type="button">🔊 Sounds On</button><button id="testRunSoundBtn" type="button" class="btn">⚾ Test Run Sound</button>
-<button id="testHrSoundBtn" type="button" class="btn">🚨 Test HR Sound</button><span id="soundTestStatus" style="font-size:11px;font-weight:800;opacity:.85;margin-left:6px"></span>
-        <button id="refreshBtn" type="button">Refresh</button>
+        <button id="soundBtn" type="button">🔊 Sounds On</button><button id="refreshBtn" type="button">Refresh</button>
       </div>
     </div>
   </header>
@@ -978,7 +976,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v108</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v109</span>
   </div>
 </div>
 
@@ -2345,52 +2343,6 @@ $("soundBtn").addEventListener("click",async()=>{
     tone(659,.10,.13,.04,"triangle");
   }
 });
-$("testRunSoundBtn")?.addEventListener("click",async()=>{
-  if(!soundEnabled){
-    soundEnabled=true;
-    localStorage.setItem("yankees-sounds","on");
-    updateSoundButton();
-  }
-  await unlockAudio();
-  playRunCheer();
-  showRunCelebration();
-});
-$("testHrSoundBtn")?.addEventListener("click",async()=>{
-  if(!soundEnabled){
-    soundEnabled=true;
-    localStorage.setItem("yankees-sounds","on");
-    updateSoundButton();
-  }
-  await unlockAudio();
-  clearTimeout(pendingScoreSound);
-  pendingScoreSound=null;
-  suppressRunSoundUntil=Date.now()+5000;
-  const organ=$("runScoredOrgan");
-  if(organ){ try{ organ.pause(); organ.currentTime=0; }catch(e){} }
-  hideRunCelebration();
-  const status=$("soundTestStatus");
-  const siren=$("hrGoalSiren");
-  if(!siren){
-    if(status) status.textContent="❌ HR audio element missing";
-    return;
-  }
-  try{
-    if(status) status.textContent="Loading goal_siren.mp3…";
-    siren.pause();
-    siren.currentTime=0;
-    siren.volume=1;
-    await siren.play();
-    showHomeRunCelebration();
-    if(status) status.textContent="✅ HR MP3 + HOME RUN banner working";
-  }catch(err){
-    console.error("HR TEST FAILED",err);
-    if(status) status.textContent=`❌ HR MP3: ${err?.name||"Playback error"}`;
-  }
-});
-
-
-
-
 function startDashboard(){
   try{ sessionStorage.removeItem("yankees-live-countdown-end"); }catch(e){}
   updateSoundButton();
@@ -2405,8 +2357,6 @@ if(document.readyState==="loading"){
   startDashboard();
 }
 </script>
-<audio id="hrGoalSiren" preload="auto" src="goal_siren.mp3"
- onerror="console.error('goal_siren.mp3 failed to load',this.error)"
- onloadeddata="console.log('goal_siren.mp3 loaded successfully')"></audio>\n<audio id="runScoredOrgan" preload="auto" src="BaseballOrgan.mp3"></audio>
+<audio id="hrGoalSiren" preload="auto" src="goal_siren.mp3"></audio>\n<audio id="runScoredOrgan" preload="auto" src="BaseballOrgan.mp3"></audio>
 </body>
 </html>
