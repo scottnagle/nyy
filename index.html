@@ -787,6 +787,31 @@ strong .at-bat-summary{
   .playbyplay-track .mobile-pbp-marquee{display:none!important}
 }
 
+
+/* v108: Run-scored celebration banner — distinct from HR banner */
+.run-celebration{
+  display:none;
+  margin:10px 0 0;
+  padding:15px 18px;
+  border-radius:16px;
+  text-align:center;
+  font-size:20px;
+  font-weight:1000;
+  letter-spacing:.06em;
+  color:#fff;
+  background:linear-gradient(90deg,#0b2d5c,#1768ac,#0b2d5c);
+  border:2px solid rgba(255,255,255,.8);
+  box-shadow:0 8px 28px rgba(0,0,0,.32);
+}
+.run-celebration.show{
+  display:block!important;
+  animation:runBannerPop .35s ease-out;
+}
+@keyframes runBannerPop{
+  from{opacity:0;transform:translateY(-8px) scale(.97)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+
 </style>
 </head>
 <body>
@@ -817,6 +842,7 @@ strong .at-bat-summary{
 </div>
   <div id="gameAwareStatus" class="mode-banner">⚾ Game-aware mode loading…</div>
   <div id="hrCelebration" class="hr-celebration" aria-live="polite">💥 YANKEES HOME RUN! ⚾</div>
+  <div id="runCelebration" class="run-celebration" aria-live="polite">⚾ YANKEES RUN SCORED! 🗽</div>
 
   <section class="grid" id="mainGameSection">
     <div class="card">
@@ -952,7 +978,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v107</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v108</span>
   </div>
 </div>
 
@@ -975,6 +1001,7 @@ let masterSoundCompressor = null;
 let pendingScoreSound = null;
 let suppressRunSoundUntil = 0;
 let hrBannerTimer = null;
+let runBannerTimer = null;
 
 function getAudioCtx(){
   if(!audioCtx){
@@ -1076,6 +1103,25 @@ function showHomeRunCelebration(){
   el.classList.add("show");
   window.__hrCelebrationTimer=setTimeout(()=>el.classList.remove("show"),6500);
 }
+function hideRunCelebration(){
+  const el=$("runCelebration");
+  if(el) el.classList.remove("show");
+  clearTimeout(runBannerTimer);
+  runBannerTimer=null;
+}
+function showRunCelebration(){
+  // HR always has visual priority too.
+  const hr=$("hrCelebration");
+  if(hr?.classList.contains("show")) return;
+  const el=$("runCelebration");
+  if(!el) return;
+  clearTimeout(runBannerTimer);
+  el.classList.remove("show");
+  void el.offsetWidth;
+  el.classList.add("show");
+  runBannerTimer=setTimeout(()=>el.classList.remove("show"),5000);
+}
+
 
 function updateSoundButton(){
   const btn=$("soundBtn");
@@ -1097,8 +1143,12 @@ function checkYankeesScoreChange(gamePk,score,isLive){
   if(score>prev){
     clearTimeout(pendingScoreSound);
     pendingScoreSound=setTimeout(()=>{
-      if(Date.now()>=suppressRunSoundUntil) playRunCheer();
-    },1400);
+      pendingScoreSound=null;
+      if(Date.now()>=suppressRunSoundUntil){
+        playRunCheer();
+        showRunCelebration();
+      }
+    },1800);
   }
 }
 
@@ -1113,8 +1163,17 @@ function checkYankeesHomeRuns(gamePk,hrTotal,isLive){
 
   const prev=Number(prevRaw);
   if(hrTotal>prev){
-    suppressRunSoundUntil=Date.now()+3500;
+    suppressRunSoundUntil=Date.now()+5000;
     clearTimeout(pendingScoreSound);
+    pendingScoreSound=null;
+
+    // HR has absolute priority: stop/cancel the ordinary run sound and banner.
+    const organ=$("runScoredOrgan");
+    if(organ){
+      try{ organ.pause(); organ.currentTime=0; }catch(e){}
+    }
+    hideRunCelebration();
+
     playHomeRunSound();
     showHomeRunCelebration();
   }
@@ -2294,6 +2353,7 @@ $("testRunSoundBtn")?.addEventListener("click",async()=>{
   }
   await unlockAudio();
   playRunCheer();
+  showRunCelebration();
 });
 $("testHrSoundBtn")?.addEventListener("click",async()=>{
   if(!soundEnabled){
@@ -2302,6 +2362,12 @@ $("testHrSoundBtn")?.addEventListener("click",async()=>{
     updateSoundButton();
   }
   await unlockAudio();
+  clearTimeout(pendingScoreSound);
+  pendingScoreSound=null;
+  suppressRunSoundUntil=Date.now()+5000;
+  const organ=$("runScoredOrgan");
+  if(organ){ try{ organ.pause(); organ.currentTime=0; }catch(e){} }
+  hideRunCelebration();
   const status=$("soundTestStatus");
   const siren=$("hrGoalSiren");
   if(!siren){
