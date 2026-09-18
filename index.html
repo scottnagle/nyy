@@ -805,7 +805,8 @@ strong .at-bat-summary{
         <div class="sub" id="updated" style="margin-top:0">Loading…</div><div id="liveEndCountdown" class="live-end-countdown" style="display:none">FINAL SCORE ENDS IN 60:00</div>
       </div>
       <div style="display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap;margin-top:7px">
-        <button id="soundBtn" type="button">🔊 Sounds On</button>
+        <button id="soundBtn" type="button">🔊 Sounds On</button><button id="testRunSoundBtn" type="button" class="btn">⚾ Test Run Sound</button>
+<button id="testHrSoundBtn" type="button" class="btn">🚨 Test HR Sound</button>
         <button id="refreshBtn" type="button">Refresh</button>
       </div>
     </div>
@@ -951,7 +952,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v103</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v105</span>
   </div>
 </div>
 
@@ -1136,20 +1137,22 @@ const $ = id => document.getElementById(id);
 const logo = id => `https://www.mlbstatic.com/team-logos/${id}.svg`;
 
 async function getJSON(url){
-  const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),5000);
-  try{
-    const r=await fetch(url,{
-      cache:"no-store",
-      mode:"cors",
-      credentials:"omit",
-      signal:controller.signal
-    });
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    return await r.json();
-  }finally{
-    clearTimeout(timeout);
+  let lastErr;
+  for(let attempt=0;attempt<2;attempt++){
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),8000);
+    try{
+      const r=await fetch(url,{cache:"no-store",mode:"cors",credentials:"omit",signal:controller.signal});
+      if(!r.ok){ const err=new Error(`HTTP ${r.status}`); err.status=r.status; throw err; }
+      return await r.json();
+    }catch(err){
+      lastErr=err;
+      const transient=err?.name==="AbortError" || !err?.status || err.status===429 || err.status>=500;
+      if(attempt===0 && transient){ await new Promise(resolve=>setTimeout(resolve,350)); continue; }
+      throw err;
+    }finally{ clearTimeout(timeout); }
   }
+  throw lastErr || new Error("Live data request failed");
 }
 function localTime(iso){
   return new Date(iso).toLocaleString([], {weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
@@ -1457,154 +1460,7 @@ function tickerEscape(value){
   }[ch]));
 }
 
-let mobileNewsRAF=null;
-function stopMobileNewsScroll(){
-  if(mobileNewsRAF){ cancelAnimationFrame(mobileNewsRAF); mobileNewsRAF=null; }
-}
-function startMobileNewsScroll(el,items){
-  stopMobileNewsScroll();
-  el.classList.add("mobile-scroll");
-  el.innerHTML="";
-  const inner=document.createElement("span");
-  inner.className="mobile-news-inner";
-  inner.textContent=(items||[]).join("   •   ");
-  el.appendChild(inner);
-
-  let x=el.clientWidth+20;
-  let last=performance.now();
-  const speed=42; // pixels per second
-  function frame(now){
-    const dt=Math.min(50,now-last)/1000;
-    last=now;
-    x-=speed*dt;
-    const w=inner.scrollWidth;
-    if(x < -w-30) x=el.clientWidth+20;
-    inner.style.transform=`translate3d(${x}px,-50%,0)`;
-    inner.style.webkitTransform=`translate3d(${x}px,-50%,0)`;
-    mobileNewsRAF=requestAnimationFrame(frame);
-  }
-  mobileNewsRAF=requestAnimationFrame(frame);
-}
-
-let fadeNewsTimer=null, fadeNewsItems=[], fadeNewsIndex=0;
-function startFadeNewsTicker(items){
-  const el=$("yankeesNewsTrack"); if(!el) return;
-  fadeNewsItems=(items||[]).filter(Boolean); if(!fadeNewsItems.length) return;
-  clearInterval(fadeNewsTimer); fadeNewsIndex=0;
-  stopMobileNewsScroll();
-
-  if(window.matchMedia("(max-width:700px)").matches){
-    el.classList.remove("fade-out","mobile-scroll");
-    el.innerHTML="";
-    const mq=document.createElement("marquee");
-    mq.className="mobile-news-marquee";
-    mq.setAttribute("behavior","scroll");
-    mq.setAttribute("direction","left");
-    mq.setAttribute("scrollamount","1");
-    mq.setAttribute("scrolldelay","20");
-    mq.setAttribute("truespeed","");
-    mq.textContent=fadeNewsItems.join("   •   ");
-    el.appendChild(mq);
-    if(typeof mq.start==="function") mq.start();
-    return;
-  }
-
-  el.classList.remove("mobile-scroll");
-  el.innerHTML="";
-  const span=document.createElement("span");
-  span.className="desktop-news-text";
-  span.textContent=fadeNewsItems[0];
-  el.appendChild(span);
-
-  fadeNewsTimer=setInterval(()=>{
-    el.classList.add("fade-out");
-    setTimeout(()=>{
-      fadeNewsIndex=(fadeNewsIndex+1)%fadeNewsItems.length;
-      span.textContent=fadeNewsItems[fadeNewsIndex];
-      el.classList.remove("fade-out");
-    },850);
-  },6000);
-}
-
-async function loadYankeesNewsTicker(){
-  const el=$("yankeesNewsTrack"); if(!el) return;
-  try{
-    const now=new Date(), start=new Date(now), end=new Date(now);
-    start.setDate(start.getDate()-3); end.setDate(end.getDate()+4);
-
-    const [sched,standings,_headlineProbe]=await Promise.all([
-      getJSON(`${API}/schedule?sportId=1&teamId=${YANKEES}&startDate=${nyDateString(start)}&endDate=${nyDateString(end)}&hydrate=team,linescore,probablePitcher`),
-      getJSON(`${API}/standings?leagueId=${AL}&season=${season}&standingsTypes=regularSeason&hydrate=team`),
-      Promise.any([
-        getJSON("https://statsapi.mlb.com/api/v1/teams/147?hydrate=team"),
-        getJSON("https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/10/news?limit=12")
-      ]).catch(()=>null)
-    ]);
-    // ESPN's browser endpoint can be blocked by CORS in some preview/local contexts.
-    // Try it separately as the actual headline source; the static fallback below guarantees
-    // visible current Yankees headlines when that endpoint is blocked.
-    const espnNews=await getJSON("https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/10/news?limit=12").catch(()=>null);
-
-    const games=(sched.dates||[]).flatMap(d=>d.games||[]);
-    const live=games.find(g=>g.status?.abstractGameState==="Live");
-    const final=games.filter(g=>g.status?.abstractGameState==="Final").sort((a,b)=>new Date(b.gameDate)-new Date(a.gameDate))[0];
-    const next=games.filter(g=>g.status?.abstractGameState==="Preview"&&new Date(g.gameDate)>Date.now()-10800000).sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate))[0];
-
-    const records=(standings.records||[]).flatMap(r=>r.teamRecords||[]);
-    const nyy=records.find(r=>r.team?.id===YANKEES);
-    const div=(standings.records||[]).find(r=>(r.teamRecords||[]).some(x=>x.team?.id===YANKEES));
-    const divTeams=div?.teamRecords||[];
-    const divRank=divTeams.findIndex(x=>x.team?.id===YANKEES)+1;
-    const leader=divTeams[0];
-    const items=[];
-
-    if(live){
-      const yh=live.teams.home.team.id===YANKEES,opp=yh?live.teams.away:live.teams.home;
-      items.push(`LIVE: Yankees ${yh?live.teams.home.score:live.teams.away.score} — ${teamShort(opp)} ${yh?live.teams.away.score:live.teams.home.score}`);
-    }else if(final){
-      const yh=final.teams.home.team.id===YANKEES,opp=yh?final.teams.away:final.teams.home;
-      items.push(`Latest: Yankees ${yh?final.teams.home.score:final.teams.away.score} — ${teamShort(opp)} ${yh?final.teams.away.score:final.teams.home.score} (Final)`);
-    }
-
-    if(nyy){
-      if(nyy.clinched||nyy.clinchedPostSeason) items.push("CLINCHED: Yankees are headed to the postseason");
-      items.push(`PLAYOFF RACE: Yankees ${nyy.wins}-${nyy.losses} (${nyy.winningPercentage})`);
-      if(divRank===1) items.push("AL EAST: Yankees lead the division");
-      else if(leader) items.push(`AL EAST: Yankees ${nyy.gamesBack||"—"} GB of ${leader.team?.name||"the leader"}`);
-      if(nyy.wildCardRank) items.push(`WILD CARD: Yankees rank #${nyy.wildCardRank}`);
-      if(nyy.streak?.streakCode) items.push(`FORM: Yankees ${nyy.streak.streakCode}`);
-    }
-
-    let headlines=(espnNews?.articles||[])
-      .map(a=>a.headline||a.title)
-      .filter(Boolean)
-      .filter((h,i,arr)=>arr.indexOf(h)===i)
-      .slice(0,4);
-
-    // Current MLB.com Yankees headlines fallback for browsers that block ESPN's feed.
-    if(!headlines.length){
-      headlines=[
-        "Yankees check first box, head to postseason for third straight season",
-        "All rise! Judge hits moonshot for first HR since return from IL",
-        "Don't expect the Yankees to take a postseason clinch in stride",
-        "Yankees back in Top 5 in Power Rankings"
-      ];
-    }
-    headlines.forEach(h=>items.push(`📰 ${h}`));
-
-    if(next){
-      const yh=next.teams.home.team.id===YANKEES,opp=yh?next.teams.away:next.teams.home;
-      items.push(`Next: Yankees ${yh?"vs":"at"} ${teamShort(opp)} • ${localTime(next.gameDate)}`);
-      const yp=yh?next.teams.home.probablePitcher:next.teams.away.probablePitcher;
-      if(yp?.fullName) items.push(`Probable starter: ${yp.fullName}`);
-    }
-
-    startFadeNewsTicker(items.length?items:["Yankees live, playoff and news updates temporarily unavailable."]);
-  }catch(e){
-    console.warn("Yankees ticker failed",e);
-    el.innerHTML="<span>Yankees live, playoff and news updates temporarily unavailable.</span>";
-  }
-}
+// NEWS section/feed removed.
 
 async function loadMainGame(){
   const today = new Date();
@@ -1860,13 +1716,28 @@ async function loadPlayoffRace(){
 }
 
 
+function chooseTodayYankeesGame(games){
+  const list=games||[];
+  const live=list.find(g=>g.status?.abstractGameState==="Live");
+  if(live) return live;
+  if(finalScoreHoldEnd && Date.now()<finalScoreHoldEnd){
+    const finals=list.filter(g=>g.status?.abstractGameState==="Final").sort((a,b)=>new Date(b.gameDate)-new Date(a.gameDate));
+    if(finals.length) return finals[0];
+  }
+  const previews=list.filter(g=>g.status?.abstractGameState==="Preview").sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate));
+  if(previews.length) return previews[0];
+  const finals=list.filter(g=>g.status?.abstractGameState==="Final").sort((a,b)=>new Date(b.gameDate)-new Date(a.gameDate));
+  return finals[0] || list[0] || null;
+}
+
 async function loadPitchingStats(){
   const box=$("pitchingStats");
   if(!box) return;
   try{
     const today=nyDateString();
     const sched=await getJSON(`${API}/schedule?sportId=1&teamId=${YANKEES}&date=${today}&hydrate=team,linescore`);
-    const g=sched.dates?.[0]?.games?.[0];
+    const games=(sched.dates||[]).flatMap(d=>d.games||[]);
+    const g=chooseTodayYankeesGame(games);
     if(!g){ box.innerHTML='<div class="tiny">No Yankees game scheduled today.</div>'; return; }
 
     const state=g.status?.abstractGameState || "";
@@ -1961,7 +1832,7 @@ async function loadStartingLineup(){
       box.classList.remove("loading"); return;
     }
 
-    const g=games[0];
+    const g=chooseTodayYankeesGame(games);
 
     // Keep FINAL GAME STATS visible for only 60 minutes after this browser
     // actually sees the game transition from Live -> Final.
@@ -2334,7 +2205,7 @@ async function loadPlayByPlay(){
     const sched=await getJSON(`${API}/schedule?sportId=1&teamId=${YANKEES}&date=${date}&hydrate=team`);
     const games=(sched.dates||[]).flatMap(d=>d.games||[]);
     if(!games.length){ renderPlayByPlayTicker(fallback); return; }
-    const g=games[0];
+    const g=chooseTodayYankeesGame(games);
     const state=g.status?.abstractGameState||"";
     if(state!=="Live"){
       syncPlayByPlayVisibility();
@@ -2371,6 +2242,8 @@ async function loadPlayByPlay(){
 
 async function refreshAll(){
   liveGame=false;
+  const refreshBtn=$("refreshBtn");
+  if(refreshBtn) refreshBtn.disabled=true;
   if($("updated")) $("updated").textContent="Refreshing…";
   loadPromotions();
 
@@ -2382,6 +2255,7 @@ async function refreshAll(){
     console.warn("Main game refresh failed",err);
   }
 
+  if(refreshBtn) refreshBtn.disabled=false;
   if($("updated")) $("updated").textContent="Updated "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"});
 
   clearTimeout(timer);
@@ -2412,6 +2286,25 @@ $("soundBtn").addEventListener("click",async()=>{
     tone(659,.10,.13,.04,"triangle");
   }
 });
+$("testRunSoundBtn")?.addEventListener("click",async()=>{
+  if(!soundEnabled){
+    soundEnabled=true;
+    localStorage.setItem("yankees-sounds","on");
+    updateSoundButton();
+  }
+  await unlockAudio();
+  playRunCheer();
+});
+$("testHrSoundBtn")?.addEventListener("click",async()=>{
+  if(!soundEnabled){
+    soundEnabled=true;
+    localStorage.setItem("yankees-sounds","on");
+    updateSoundButton();
+  }
+  await unlockAudio();
+  playHomeRunSound();
+});
+
 
 
 
