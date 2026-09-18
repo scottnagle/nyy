@@ -884,6 +884,7 @@ strong .at-bat-summary{
           <div style="font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.10em">CURRENT STATUS</div>
           <div style="margin-top:5px;font-weight:800"><span id="judgeStatusMain">Checking live roster status…</span></div>
           <div class="tiny" style="margin-top:5px;line-height:1.45"><span id="judgeStatusDetail">Loading current Yankees roster information…</span></div>
+            <div id="judgeInjurySource" class="tiny" style="display:none;margin-top:7px;line-height:1.4;opacity:.82"></div>
         </div>
       </div>
     </div>
@@ -976,7 +977,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v109</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v110</span>
   </div>
 </div>
 
@@ -1691,6 +1692,34 @@ async function loadJudgeStatus(){
   }
 }
 
+
+/* Official-announcement bridge. Official MLB roster data has priority. */
+function getJudgeOfficialAnnouncementStatus(){
+  const now=Date.now();
+  if(now>=Date.parse("2026-09-18T17:00:00-04:00") &&
+     now<=Date.parse("2026-09-20T23:59:59-04:00")){
+    return {
+      label:"🟠 IL MOVE PENDING",
+      detail:"Right calf strain • Yankees announced Judge will be placed on the 10-day IL Saturday.",
+      source:"Official Yankees/MLB announcement • Sept. 18, 2026"
+    };
+  }
+  return null;
+}
+function applyJudgeAnnouncementStatusIfNeeded(){
+  const main=$("judgeStatusMain"), detail=$("judgeStatusDetail"), source=$("judgeInjurySource");
+  if(!main || !detail) return;
+  const txt=`${main.textContent||""} ${detail.textContent||""}`.toLowerCase();
+  if(txt.includes("injured list") || /\b(?:10|15|60)-day il\b/.test(txt)){
+    if(source) source.style.display="none";
+    return;
+  }
+  const p=getJudgeOfficialAnnouncementStatus();
+  if(!p){ if(source) source.style.display="none"; return; }
+  main.textContent=p.label; detail.textContent=p.detail;
+  if(source){ source.textContent=p.source; source.style.display="block"; }
+}
+
 async function loadJudge(){
   await loadJudgeStatus();
   const url=`${API}/people/${JUDGE}/stats?stats=season&group=hitting&season=${season}`;
@@ -1701,6 +1730,7 @@ async function loadJudge(){
   $("jAVG").textContent=s.avg ?? "—";
   $("jOPS").textContent=s.ops ?? "—";
   $("judgeSeason").textContent=`${season} Season • ${s.gamesPlayed ?? "—"} games`;
+  applyJudgeAnnouncementStatusIfNeeded();
 }
 
 async function loadStandings(){
