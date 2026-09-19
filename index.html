@@ -1088,7 +1088,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v124</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v125</span>
   </div>
 </div>
 
@@ -2575,10 +2575,10 @@ async function refreshAll(){
   if($("updated")) $("updated").textContent="Updated "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"});
 
   clearTimeout(timer);
-  const refreshMs=liveGame ? 60*1000 : 15*60*1000;
+  const refreshMs=liveGame ? 15*1000 : 15*60*1000;
   timer=setTimeout(refreshAll,refreshMs);
 
-  const rate=liveGame ? "Auto-refreshes every 1 minute during live games" : "Auto-refreshes every 15 minutes";
+  const rate=liveGame ? "Auto-refreshes every 15 seconds during live games" : "Auto-refreshes every 15 minutes";
   if($("refreshRateText")) $("refreshRateText").textContent=rate;
   if($("refreshFooterText")) $("refreshFooterText").textContent=liveGame
     ? "LIVE GAME: Data refreshes automatically every 1 minute."
