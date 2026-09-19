@@ -1088,7 +1088,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v123</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v124</span>
   </div>
 </div>
 
@@ -2118,8 +2118,7 @@ async function loadPitchingStats(){
 
     const label=state==="Final" ? "FINAL PITCHING STATS" : "LIVE PITCHING STATS";
     box.classList.remove("loading");
-    box.innerHTML=`<div style="font-size:13px;font-weight:900;letter-spacing:.10em;color:#dbe8ff;margin-bottom:10px">${label}</div>
-      ${renderTeam(yankKey,g.teams?.[yankKey]?.team?.name||"New York Yankees")}`;
+    box.innerHTML=`${renderTeam(yankKey,g.teams?.[yankKey]?.team?.name||"New York Yankees")}`;
   }catch(e){
     box.innerHTML='<div class="tiny">Pitching stats temporarily unavailable. They will retry on the next refresh.</div>';
   }
