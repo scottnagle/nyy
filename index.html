@@ -1088,7 +1088,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v126</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v130</span>
   </div>
 </div>
 
@@ -1561,6 +1561,17 @@ async function loadScoutingReport(g){
     const yRecord=yRec?`${yRec.wins}-${yRec.losses}`:"—";
     const oRecord=oRec?`${oRec.wins}-${oRec.losses}`:"—";
 
+    // Dashboard game prediction from season strength and recent performance.
+    const seasonBase=(yRec && oRec && (yPct+oPct)>0) ? yPct/(yPct+oPct) : .50;
+    const recentBase=(yr.games && or.games)
+      ? ((yr.w/Math.max(1,yr.games)) + (1-(or.w/Math.max(1,or.games))))/2
+      : .50;
+    const runEdge=Math.max(-.08,Math.min(.08,(yDiff-oDiff)/50));
+    let yProb=(seasonBase*.60)+(recentBase*.30)+(.50*.10)+runEdge;
+    yProb=Math.max(.20,Math.min(.80,yProb));
+    const yPred=Math.round(yProb*100);
+    const oPred=100-yPred;
+
     box.innerHTML=`
       <div style="font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.10em">SCOUTING REPORT</div>
       <div class="tiny" style="margin-top:8px;line-height:1.6">
@@ -1572,6 +1583,7 @@ async function loadScoutingReport(g){
       <div style="margin-top:11px;padding:11px 12px;border-radius:12px;background:rgba(0,48,135,.22);border:1px solid rgba(255,255,255,.16)">
         <div class="tiny" style="line-height:1.55"><strong>🔑 KEY TO THE GAME:</strong> ${key}</div>
       </div>
+      <div id="gamePredictionLine" class="tiny" style="margin-top:10px;padding:10px 12px;line-height:1.55;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid var(--line)"><strong>📊 GAME WIN PREDICTION:</strong> Yankees ${yPred}% • ${opp.name} ${oPred}%</div>
       <div class="tiny" style="margin-top:8px;opacity:.65">Analysis generated from current MLB matchup, standings and recent-game data.</div>`;
   }catch(e){
     console.warn("Scouting report failed",e);
@@ -1579,6 +1591,44 @@ async function loadScoutingReport(g){
       <div style="font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.10em">SCOUTING REPORT</div>
       <div class="tiny" style="margin-top:7px">Matchup analysis temporarily unavailable.</div>`;
   }
+}
+
+
+function updateLiveGamePrediction(g){
+  const el=$("gamePredictionLine");
+  if(!el || !g) return;
+  const yHome=g.teams?.home?.team?.id===YANKEES;
+  const opp=yHome ? g.teams?.away?.team : g.teams?.home?.team;
+  if(!opp || g.status?.abstractGameState!=="Live") return;
+
+  const priorMatch=el.textContent.match(/Yankees\s+(\d+)%/);
+  const prior=Math.max(.02,Math.min(.98,priorMatch ? Number(priorMatch[1])/100 : .50));
+  const ls=g.linescore||{};
+  const yScore=Number((yHome?g.teams?.home:g.teams?.away)?.score ?? 0);
+  const oScore=Number((yHome?g.teams?.away:g.teams?.home)?.score ?? 0);
+  const diff=yScore-oScore;
+  const inning=Math.max(1,Number(ls.currentInning||1));
+  const half=String(ls.inningHalf||"").toLowerCase();
+  const outs=Math.max(0,Math.min(2,Number(ls.outs||0)));
+  const offenseIsYankees=(half.includes("top")&&!yHome)||(half.includes("bottom")&&yHome);
+  const offenseIsOpp=(half.includes("top")&&yHome)||(half.includes("bottom")&&!yHome);
+  const offense=ls.offense||{};
+  const on1=!!offense.first, on2=!!offense.second, on3=!!offense.third;
+
+  let logit=Math.log(prior/(1-prior));
+  const inningWeight=.34+Math.min(1,inning/9)*.78;
+  logit+=diff*inningWeight;
+  const baseThreat=(on1*.16)+(on2*.28)+(on3*.40);
+  const outFactor=(3-outs)/3;
+  if(offenseIsYankees) logit+=(baseThreat+.05)*outFactor;
+  if(offenseIsOpp) logit-=(baseThreat+.05)*outFactor;
+
+  let p=1/(1+Math.exp(-logit));
+  p=Math.max(.01,Math.min(.99,p));
+  const yp=Math.round(p*100), op=100-yp;
+  const bases=[on1?"1B":"",on2?"2B":"",on3?"3B":""].filter(Boolean).join(", ")||"bases empty";
+  const halfLabel=half.includes("bottom")?"Bot":half.includes("top")?"Top":"";
+  el.innerHTML=`<strong>📊 LIVE GAME WIN PREDICTION:</strong> Yankees ${yp}% • ${opp.name} ${op}% <span style="opacity:.68">• ${halfLabel} ${inning} • ${outs} out${outs===1?"":"s"} • ${bases}</span>`;
 }
 
 function markSectionError(id,msg="Temporarily unavailable"){
@@ -1817,7 +1867,7 @@ async function loadMainGame(){
   applyGameAwareMode(g);
   renderLiveBoxScore(g);
   loadGameWeather(g);
-  loadScoutingReport(g);
+  loadScoutingReport(g).then(()=>updateLiveGamePrediction(g)).catch(()=>{});
   const away=g.teams.away, home=g.teams.home;
   const yankeesHome=home.team.id===YANKEES;
   const yankeesScore=Number(yankeesHome ? home.score : away.score);
