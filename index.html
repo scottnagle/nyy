@@ -895,6 +895,31 @@ strong .at-bat-summary{
 }
 
 
+
+/* v123: game-start celebration banner */
+.game-start-celebration{
+  display:none;
+  margin:10px 0 0;
+  padding:15px 18px;
+  border-radius:16px;
+  text-align:center;
+  font-size:20px;
+  font-weight:1000;
+  letter-spacing:.06em;
+  color:#fff;
+  background:linear-gradient(90deg,#0c2340,#1c3f75,#0c2340);
+  border:2px solid rgba(255,255,255,.8);
+  box-shadow:0 8px 28px rgba(0,0,0,.32);
+}
+.game-start-celebration.show{
+  display:block!important;
+  animation:gameStartBannerPop .35s ease-out;
+}
+@keyframes gameStartBannerPop{
+  from{opacity:0;transform:translateY(-8px) scale(.97)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+
 /* v111: Judge number/position in Yankees navy */
 .judge-number{color:#fff!important;}
 </style>
@@ -924,6 +949,7 @@ strong .at-bat-summary{
   <div id="playByPlayTrack" class="playbyplay-track"><span>Waiting for Yankees game…</span></div>
 </div>
   <div id="gameAwareStatus" class="mode-banner">⚾ Game-aware mode loading…</div>
+  <div id="gameStartCelebration" class="game-start-celebration" aria-live="polite">⚾ GAME STARTED — PLAY BALL! ⚾</div>
   <div id="hrCelebration" class="hr-celebration" aria-live="polite">💥 YANKEES HOME RUN! ⚾</div>
   <div id="runCelebration" class="run-celebration" aria-live="polite">⚾ YANKEES RUN SCORED! 🗽</div>
 
@@ -1062,7 +1088,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v122</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v123</span>
   </div>
 </div>
 
@@ -1212,6 +1238,43 @@ function updateSoundButton(){
   if(!btn) return;
   btn.textContent=soundEnabled ? "🔊 Sounds On" : "🔇 Sounds Off";
   btn.classList.toggle("sound-off",!soundEnabled);
+}
+
+
+function playGameStartSound(){
+  if(!soundEnabled) return;
+  const organ=document.getElementById("gameStartOrgan");
+  if(!organ) return;
+  try{
+    organ.pause();
+    organ.currentTime=0;
+    organ.volume=1;
+    organ.play().catch(err=>console.warn("Game start sound blocked until browser interaction",err));
+  }catch(err){
+    console.warn("Game start sound playback failed",err);
+  }
+}
+
+function showGameStartCelebration(){
+  const el=$("gameStartCelebration");
+  if(!el) return;
+  clearTimeout(window.__gameStartCelebrationTimer);
+  el.classList.remove("show");
+  void el.offsetWidth;
+  el.classList.add("show");
+  window.__gameStartCelebrationTimer=setTimeout(()=>el.classList.remove("show"),6500);
+}
+
+/* Fire once when this dashboard observes a scheduled Yankees game transition
+   from Preview to Live. Never fire merely because the page was opened mid-game. */
+function checkYankeesGameStart(gamePk,currentState,previousState){
+  if(!gamePk) return;
+  const key=`yankees-game-start-fired-${gamePk}`;
+  if(currentState==="Live" && previousState==="Preview" && !localStorage.getItem(key)){
+    localStorage.setItem(key,"1");
+    playGameStartSound();
+    showGameStartCelebration();
+  }
 }
 
 function checkYankeesScoreChange(gamePk,score,isLive){
@@ -1738,6 +1801,7 @@ async function loadMainGame(){
   if(!g){ $("mainGame").innerHTML='<div class="error">No Yankees game found.</div>'; return; }
 
   liveGame=g.status?.abstractGameState==="Live";
+  checkYankeesGameStart(g.gamePk,g.status?.abstractGameState,previousStates.get(g.gamePk));
 
   const mainHeading=$("mainGameHeading");
   if(mainHeading){
@@ -2554,5 +2618,6 @@ if(document.readyState==="loading"){
 }
 </script>
 <audio id="hrGoalSiren" preload="auto" src="goal_siren.mp3"></audio>\n<audio id="runScoredOrgan" preload="auto" src="BaseballOrgan.mp3"></audio>
+<audio id="gameStartOrgan" preload="auto" src="baseball_organ_start_game.mp3"></audio>
 </body>
 </html>
