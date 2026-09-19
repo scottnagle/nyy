@@ -568,6 +568,88 @@ strong .at-bat-summary{
 .ps-explain{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.035);font-size:11px;line-height:1.45;opacity:.82}
 @media(max-width:700px){.ps-grid{grid-template-columns:repeat(2,1fr)}}
 
+/* v116: slightly more compact Next Yankees Game section */
+#mainGameSection > .card:first-child > .pad{padding:16px 18px}
+#mainGameSection #mainGameHeading{font-size:18px;margin-bottom:10px}
+#mainGameSection #mainGame{font-size:.94em}
+#mainGameSection #gameWeather{margin-top:10px;padding-top:9px;padding-bottom:9px}
+#mainGameSection #scoutingReport{margin-top:11px!important;padding:12px!important}
+
+
+/* v117: tighter scouting report top-to-bottom */
+#mainGameSection #scoutingReport{margin-top:8px!important;padding:10px 12px 8px!important}
+#mainGameSection #scoutingReport .tiny{line-height:1.38!important}
+#mainGameSection #scoutingReport > div{margin-top:6px!important}
+#mainGameSection #scoutingReport > div:first-child{margin-top:0!important}
+#mainGameSection #scoutingReport > div[style*="padding"]{padding:8px 10px!important}
+#mainGameSection #scoutingReport > div:last-child{margin-top:5px!important;margin-bottom:0!important}
+
+
+/* v121: make pitching player presentation match Top 5 Yankees styling */
+#pitchingStats .pitch-team{
+  background:transparent!important;
+  border:0!important;
+  padding:0!important;
+}
+#pitchingStats .pitcher-row{
+  background:rgba(255,255,255,.035)!important;
+  border:1px solid rgba(255,255,255,.10)!important;
+  border-radius:16px!important;
+  padding:14px 16px!important;
+}
+#pitchingStats .pitch-name{
+  gap:14px!important;
+  color:#fff!important;
+  font-size:15px!important;
+  font-weight:900!important;
+}
+#pitchingStats .pitch-name strong{
+  color:#fff!important;
+  font-size:15px!important;
+  font-weight:900!important;
+}
+#pitchingStats .pitch-name .tiny{
+  color:#b8c7ea!important;
+  opacity:1!important;
+  font-size:12px!important;
+  font-weight:600!important;
+  line-height:1.25!important;
+}
+#pitchingStats .player-head{
+  width:54px!important;
+  height:54px!important;
+  min-width:54px!important;
+  border-radius:50%!important;
+  object-fit:cover!important;
+  background:#fff!important;
+  filter:brightness(1.22) contrast(1.05) saturate(1.04)!important;
+  opacity:1!important;
+}
+#pitchingStats > div:first-child{
+  color:#dbe8ff!important;
+  opacity:1!important;
+  font-weight:900!important;
+}
+
+
+/* v122: pitching colors/rows match Today's Lineup exactly; remove artificial photo tint */
+#pitchingStats{opacity:1!important}
+#pitchingStats .pitcher-row{
+  background:rgba(255,255,255,.035)!important;
+  border:1px solid var(--line)!important;
+  border-radius:14px!important;
+  padding:14px!important;
+  margin-bottom:9px!important;
+}
+#pitchingStats .player-head{
+  filter:none!important;
+  opacity:1!important;
+  background:#fff!important;
+}
+#pitchingStats .pitch-name,
+#pitchingStats .pitch-name strong{color:var(--ink)!important}
+#pitchingStats .pitch-name .tiny{color:var(--muted)!important;opacity:1!important}
+
 /* v91: no green frame around the first/live game section */
 .mode-live, .mode-live.card, #mainGameSection.mode-live{
   border-color:rgba(255,255,255,.10) !important;
@@ -980,7 +1062,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v112</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v122</span>
   </div>
 </div>
 
@@ -1325,64 +1407,116 @@ async function loadScoutingReport(g){
   try{
     const yHome=g.teams.home.team.id===YANKEES;
     const opp=yHome ? g.teams.away.team : g.teams.home.team;
-    const yankeesSide=yHome ? g.teams.home : g.teams.away;
-    const oppSide=yHome ? g.teams.away : g.teams.home;
+    const yPitch=g.teams[yHome?"home":"away"]?.probablePitcher?.fullName || "TBD";
+    const oPitch=g.teams[yHome?"away":"home"]?.probablePitcher?.fullName || "TBD";
+    const gameDate=new Date(g.gameDate);
+    const seasonYear=gameDate.getFullYear();
 
-    const yPitch=yankeesSide.probablePitcher?.fullName || "TBD";
-    const oPitch=oppSide.probablePitcher?.fullName || "TBD";
+    const startDate=new Date(gameDate.getTime()-12*86400000);
+    const recent=async teamId=>{
+      const d=await getJSON(`${API}/schedule?sportId=1&teamId=${teamId}&startDate=${nyDateString(startDate)}&endDate=${nyDateString(gameDate)}&hydrate=team`);
+      const games=(d.dates||[]).flatMap(x=>x.games||[]).filter(x=>x.status?.abstractGameState==="Final").slice(-5);
+      let w=0,l=0,rf=0,ra=0;
+      games.forEach(x=>{
+        const side=x.teams.home.team.id===teamId ? x.teams.home : x.teams.away;
+        const other=x.teams.home.team.id===teamId ? x.teams.away : x.teams.home;
+        const sr=Number(side.score||0), or=Number(other.score||0);
+        rf+=sr; ra+=or;
+        if(sr>or) w++; else l++;
+      });
+      return {w,l,rf,ra,games:games.length,rpg:games.length?rf/games.length:0,rapg:games.length?ra/games.length:0};
+    };
 
-    // Pull both teams' season records from standings.
-    const standings=await getJSON(`${API}/standings?leagueId=103,104&season=${season}&standingsTypes=regularSeason&hydrate=team`);
+    const standings=await getJSON(`${API}/standings?leagueId=${AL}&season=${seasonYear}&standingsTypes=regularSeason&hydrate=team`);
     const records=(standings.records||[]).flatMap(r=>r.teamRecords||[]);
     const yRec=records.find(r=>r.team.id===YANKEES);
     const oRec=records.find(r=>r.team.id===opp.id);
 
-    // Pull recent form for both clubs.
-    const gameDate=new Date(g.gameDate);
-    const start=new Date(gameDate); start.setDate(start.getDate()-12);
-
-    async function recent(teamId){
-      const d=await getJSON(`${API}/schedule?sportId=1&teamId=${teamId}&startDate=${nyDateString(start)}&endDate=${nyDateString(gameDate)}&hydrate=team`);
-      const games=(d.dates||[]).flatMap(x=>x.games||[]).filter(x=>x.status?.abstractGameState==="Final").slice(-5);
-      let w=0,l=0;
-      games.forEach(x=>{
-        const side=x.teams.home.team.id===teamId ? x.teams.home : x.teams.away;
-        const other=x.teams.home.team.id===teamId ? x.teams.away : x.teams.home;
-        if((side.score||0)>(other.score||0)) w++; else l++;
-      });
-      return {w,l};
-    }
-
     const [yr,or]=await Promise.all([recent(YANKEES),recent(opp.id)]);
 
-    let matchup="Even matchup";
-    if(yRec && oRec){
-      const yp=parseFloat(yRec.winningPercentage||0);
-      const op=parseFloat(oRec.winningPercentage||0);
-      if(yp-op>=0.06) matchup="Yankees have the stronger season record";
-      else if(op-yp>=0.06) matchup=`${opp.name} has the stronger season record`;
+    const yPct=yRec ? parseFloat(yRec.winningPercentage||0) : 0;
+    const oPct=oRec ? parseFloat(oRec.winningPercentage||0) : 0;
+    const yDiff=yr.rf-yr.ra, oDiff=or.rf-or.ra;
+    const seed=[g.gamePk||0,opp.id||0,yr.w,or.w,yr.rf,or.rf].reduce((a,n)=>a+(Number(n)||0),0);
+    const choose=arr=>arr[Math.abs(seed)%arr.length];
+
+    let edge="Essentially even on the available indicators";
+    if(yPct-oPct>=.06 && yDiff>=oDiff) edge="Yankees — stronger season record and recent run profile";
+    else if(oPct-yPct>=.06 && oDiff>=yDiff) edge=`${opp.name} — stronger season record and recent run profile`;
+    else if(yDiff-oDiff>=5) edge="Yankees — better recent run differential";
+    else if(oDiff-yDiff>=5) edge=`${opp.name} — better recent run differential`;
+    else if(yPct>oPct+.025) edge="Slight Yankees edge by season record";
+    else if(oPct>yPct+.025) edge=`Slight ${opp.name} edge by season record`;
+
+    let trend;
+    if(yr.w>=4) trend=`New York enters hot at ${yr.w}-${yr.l}, scoring ${yr.rpg.toFixed(1)} runs per game over its last ${yr.games}.`;
+    else if(yr.w<=1) trend=`New York is ${yr.w}-${yr.l} over its last ${yr.games}; generating early baserunners is especially important.`;
+    else trend=`New York is ${yr.w}-${yr.l} over its last ${yr.games}, with a ${yDiff>=0?"+":""}${yDiff} run differential.`;
+
+    let opponentTrend;
+    if(or.w>=4) opponentTrend=`${opp.name} is also hot (${or.w}-${or.l}) and has averaged ${or.rpg.toFixed(1)} runs over that stretch.`;
+    else if(or.w<=1) opponentTrend=`${opp.name} is ${or.w}-${or.l} over its last ${or.games}, a chance for New York to apply pressure before they find rhythm.`;
+    else opponentTrend=`${opp.name} is ${or.w}-${or.l} over its last ${or.games} with a ${oDiff>=0?"+":""}${oDiff} run differential.`;
+
+    let offensePlan;
+    if(oPitch!=="TBD"){
+      offensePlan=choose([
+        `Make ${oPitch} work. Avoid chase swings early, extend plate appearances and force him to execute multiple pitches in the zone.`,
+        `Against ${oPitch}, prioritize strike-zone control: hunt mistakes in favorable counts rather than giving away quick outs.`,
+        `Turn the lineup over against ${oPitch}. Traffic ahead of the middle of the order is more valuable than relying on isolated solo power.`
+      ]);
+    }else{
+      offensePlan=choose([
+        `Control the strike zone and create traffic ahead of the middle of the order; don't make the offense dependent on solo home runs.`,
+        `Avoid empty innings. Quality at-bats, walks and productive contact can create the multi-run opportunities that separate close games.`,
+        `Force ${opp.name} to record difficult outs throughout the lineup instead of giving away quick at-bats.`
+      ]);
     }
 
-    let key="Score first and pressure the opposing bullpen.";
-    if(or.w>=4) key=`Slow down a hot ${opp.name} club early.`;
-    else if(yr.w>=4) key="Keep the current momentum going and attack early in counts.";
+    let pitchingPlan;
+    if(yPitch!=="TBD"){
+      pitchingPlan=choose([
+        `${yPitch} needs clean first innings: get ahead, limit walks and keep ${opp.name}'s best hitters from batting with free baserunners.`,
+        `The formula for ${yPitch}: first-pitch strikes, limited traffic and no extended innings created by walks or defensive mistakes.`,
+        `Let ${yPitch} attack the zone with the bases empty. Keeping leadoff hitters off base changes the entire shape of the matchup.`
+      ]);
+    }else{
+      pitchingPlan=`Keep ${opp.name}'s leadoff hitters off base and avoid free passes in front of the heart of the order.`;
+    }
+
+    let key;
+    if(or.w>=4) key=`Break ${opp.name}'s recent rhythm: win the first trip through the order and avoid giving their offense extra baserunners.`;
+    else if(yr.w>=4) key=`Preserve the Yankees' momentum with disciplined at-bats — don't let aggressive hitting turn into quick, low-pressure innings.`;
+    else if(yDiff<0) key=`Stop the recent run-prevention leak. Clean innings and limiting free bases matter more tonight than forcing offense early.`;
+    else if(yr.rpg<3.5) key=`Create offense without waiting for the home run: walks, baserunners and productive contact need to put multiple runners in scoring position.`;
+    else key=choose([
+      `Win the traffic battle. Put more runners on base than ${opp.name} and make the highest-leverage at-bats come with men aboard.`,
+      `Own the middle innings. The second and third trips through the order are where New York should turn information from early at-bats into damage.`,
+      `Avoid free outs on both sides: disciplined plate appearances, clean defense and limited walks can swing an otherwise close matchup.`
+    ]);
+
+    const yRecord=yRec?`${yRec.wins}-${yRec.losses}`:"—";
+    const oRecord=oRec?`${oRec.wins}-${oRec.losses}`:"—";
 
     box.innerHTML=`
       <div style="font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.10em">SCOUTING REPORT</div>
-      <div style="margin-top:9px;font-weight:800">${matchup}</div>
-      <div class="tiny" style="margin-top:7px;line-height:1.55">
-        <strong>Probable pitchers:</strong> Yankees — ${yPitch} • ${opp.name} — ${oPitch}<br>
-        <strong>Recent form:</strong> Yankees ${yr.w}-${yr.l} over last 5 • ${opp.name} ${or.w}-${or.l} over last 5<br>
-        <strong>Season records:</strong> Yankees ${yRec ? `${yRec.wins}-${yRec.losses}` : "—"} • ${opp.name} ${oRec ? `${oRec.wins}-${oRec.losses}` : "—"}<br>
-        <strong>Key to the game:</strong> ${key}
-      </div>`;
+      <div class="tiny" style="margin-top:8px;line-height:1.6">
+      </div>
+      <div style="margin-top:12px;padding:11px 12px;border-radius:12px;background:rgba(255,255,255,.045);border:1px solid var(--line)">
+        <div class="tiny" style="line-height:1.55"><strong>⚾ Yankees at the plate:</strong> ${offensePlan}</div>
+        <div class="tiny" style="margin-top:7px;line-height:1.55"><strong>🔥 Yankees on the mound:</strong> ${pitchingPlan}</div>
+      </div>
+      <div style="margin-top:11px;padding:11px 12px;border-radius:12px;background:rgba(0,48,135,.22);border:1px solid rgba(255,255,255,.16)">
+        <div class="tiny" style="line-height:1.55"><strong>🔑 KEY TO THE GAME:</strong> ${key}</div>
+      </div>
+      <div class="tiny" style="margin-top:8px;opacity:.65">Analysis generated from current MLB matchup, standings and recent-game data.</div>`;
   }catch(e){
+    console.warn("Scouting report failed",e);
     box.innerHTML=`
       <div style="font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.10em">SCOUTING REPORT</div>
       <div class="tiny" style="margin-top:7px">Matchup analysis temporarily unavailable.</div>`;
   }
 }
-
 
 function markSectionError(id,msg="Temporarily unavailable"){
   const el=$(id);
@@ -1825,7 +1959,7 @@ async function loadPitchingStats(){
   if(!box) return;
   try{
     const today=nyDateString();
-    const sched=await getJSON(`${API}/schedule?sportId=1&teamId=${YANKEES}&date=${today}&hydrate=team,linescore`);
+    const sched=await getJSON(`${API}/schedule?sportId=1&teamId=${YANKEES}&date=${today}&hydrate=team,linescore,probablePitcher`);
     const games=(sched.dates||[]).flatMap(d=>d.games||[]);
     const g=chooseTodayYankeesGame(games);
     if(!g){ box.innerHTML='<div class="tiny">No Yankees game scheduled today.</div>'; return; }
@@ -1847,7 +1981,35 @@ async function loadPitchingStats(){
     localStorage.setItem(pitchingStateKey,state);
 
     if(state==="Preview"){
-      box.innerHTML='<div class="tiny">Pitching stats will appear when today’s game begins.</div>';
+      const yHome=g.teams?.home?.team?.id===YANKEES;
+      const ySide=yHome ? g.teams?.home : g.teams?.away;
+      let probable=ySide?.probablePitcher || null;
+
+      // Primary source is the hydrated MLB schedule. If that field has not
+      // populated, fall back to the game's live feed before showing TBD.
+      if(!probable?.id){
+        try{
+          const feed=await getJSON(`${API}/game/${g.gamePk}/feed/live`);
+          const side=yHome ? "home" : "away";
+          probable=feed.gameData?.probablePitchers?.[side] || probable;
+        }catch(e){
+          console.warn("Probable pitcher fallback unavailable",e);
+        }
+      }
+
+      const pitcherName=probable?.fullName || "TBD";
+      const pitcherId=probable?.id;
+      box.classList.remove("loading");
+      box.innerHTML=`
+        <div style="font-size:13px;font-weight:900;letter-spacing:.10em;color:#dbe8ff;margin-bottom:10px">PROBABLE YANKEES PITCHER</div>
+        <div class="pitch-team">
+          <div class="pitcher-row">
+            <div class="pitch-name">
+              ${pitcherId ? `<img class="player-head" src="https://img.mlbstatic.com/mlb-photos/image/upload/w_100,q_auto:best/v1/people/${pitcherId}/headshot/67/current" alt="${pitcherName}">` : ""}
+              <div><strong>${pitcherName}</strong><div class="tiny">Scheduled starter • Pitching stats appear when the game begins.</div></div>
+            </div>
+          </div>
+        </div>`;
       return;
     }
 
@@ -1891,6 +2053,7 @@ async function loadPitchingStats(){
     }
 
     const label=state==="Final" ? "FINAL PITCHING STATS" : "LIVE PITCHING STATS";
+    box.classList.remove("loading");
     box.innerHTML=`<div style="font-size:13px;font-weight:900;letter-spacing:.10em;color:#dbe8ff;margin-bottom:10px">${label}</div>
       ${renderTeam(yankKey,g.teams?.[yankKey]?.team?.name||"New York Yankees")}`;
   }catch(e){
