@@ -1176,7 +1176,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v146</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v148</span>
   </div>
 </div>
 
@@ -1959,82 +1959,80 @@ function textHasTeam(s,name){
 async function getPolymarketGameProbability(g){
   const yHome=g.teams?.home?.team?.id===YANKEES;
   const opponentName=(yHome?g.teams?.away?.team?.name:g.teams?.home?.team?.name)||"Opponent";
-  const q=encodeURIComponent(`Yankees ${opponentName}`);
-  const urls=[
+  const gameDay=nyDateString(new Date(g.gameDate||Date.now()));
+
+  // Discover the event, but ONLY accept the actual two-team MONEYLINE market.
+  // This prevents a Yankees prop/team-total token from being mistaken for game winner.
+  const q=encodeURIComponent(`New York Yankees ${opponentName} ${gameDay}`);
+  const discovery=[
     `https://gamma-api.polymarket.com/public-search?q=${q}`,
-    `https://gamma-api.polymarket.com/events?active=true&closed=false&limit=100`
+    `https://gamma-api.polymarket.com/events?active=true&closed=false&limit=200`
   ];
-  let candidates=[];
-  for(const url of urls){
+  let events=[];
+  for(const url of discovery){
     try{
       const d=await getJSON(url);
       const arr=Array.isArray(d)?d:(d?.events||d?.data||[]);
-      candidates.push(...arr);
-      if(candidates.length) break;
+      events.push(...arr);
     }catch(e){ console.warn("Polymarket discovery unavailable",e); }
   }
 
-  const markets=[];
-  for(const ev of candidates){
-    const hay=[ev.title,ev.question,ev.slug,ev.description].filter(Boolean).join(" ");
-    const eventMatches=textHasTeam(hay,"New York Yankees") && textHasTeam(hay,opponentName);
+  let moneyline=null, yi=-1, oi=-1, outcomes=[], tokenIds=[], gammaPrices=[];
+  for(const ev of events){
+    const eventText=[ev.title,ev.question,ev.slug,ev.description].filter(Boolean).join(" ");
+    if(!(textHasTeam(eventText,"New York Yankees") && textHasTeam(eventText,opponentName))) continue;
+
     for(const m of (ev.markets||[])){
-      const mh=[hay,m.question,m.title,m.slug].filter(Boolean).join(" ");
-      if(eventMatches || (textHasTeam(mh,"New York Yankees") && textHasTeam(mh,opponentName))) markets.push(m);
+      const outs=parseMaybeJSON(m.outcomes);
+      if(outs.length!==2) continue;
+      const yIndex=outs.findIndex(o=>textHasTeam(String(o),"New York Yankees"));
+      const oIndex=outs.findIndex(o=>textHasTeam(String(o),opponentName));
+      if(yIndex<0 || oIndex<0 || yIndex===oIndex) continue;
+
+      const txt=[m.question,m.title,m.slug,m.description].filter(Boolean).join(" ").toLowerCase();
+      if(/(total|runs|run line|spread|inning|hits|home runs|strikeouts|rbi|first|team total|player)/.test(txt)) continue;
+
+      const ids=parseMaybeJSON(m.clobTokenIds || m.clob_token_ids);
+      const prices=parseMaybeJSON(m.outcomePrices).map(Number);
+      if(ids.length!==2) continue;
+
+      moneyline=m; yi=yIndex; oi=oIndex; outcomes=outs; tokenIds=ids; gammaPrices=prices;
+      break;
     }
-    if(!ev.markets && eventMatches) markets.push(ev);
+    if(moneyline) break;
+  }
+  if(!moneyline) throw new Error("No exact Yankees/opponent Polymarket moneyline found");
+
+  // Read BOTH sides from the live CLOB and normalize them. A single side can have
+  // stale/empty-book artifacts near 0 or 1, which caused the incorrect 0%-100%.
+  async function clobMid(token){
+    const d=await getJSON(`https://clob.polymarket.com/midpoint?token_id=${encodeURIComponent(token)}`);
+    const p=Number(d?.mid);
+    return Number.isFinite(p) && p>0 && p<1 ? p : null;
   }
 
-  const m=markets.find(x=>{
-    const s=[x.question,x.title,x.slug].filter(Boolean).join(" ").toLowerCase();
-    return !/(total|runs|run line|spread|inning|hits|home runs|strikeouts|rbi)/.test(s);
-  }) || markets[0];
-  if(!m) throw new Error("No matching Polymarket Yankees game market");
-
-  const outcomes=parseMaybeJSON(m.outcomes);
-  const gammaPrices=parseMaybeJSON(m.outcomePrices).map(Number);
-  const tokenIds=parseMaybeJSON(m.clobTokenIds || m.clob_token_ids);
-
-  let yi=outcomes.findIndex(o=>textHasTeam(String(o),"New York Yankees"));
-  if(yi<0 && outcomes.length===2){
-    const oi=outcomes.findIndex(o=>textHasTeam(String(o),opponentName));
-    if(oi>=0) yi=1-oi;
-  }
-
-  // IMPORTANT: Gamma is discovery/metadata. For LIVE updates use the CLOB token price.
-  if(yi>=0 && tokenIds[yi]){
-    const token=encodeURIComponent(tokenIds[yi]);
-    const clobUrls=[
-      `https://clob.polymarket.com/midpoint?token_id=${token}`,
-      `https://clob.polymarket.com/price?token_id=${token}&side=buy`
-    ];
-    for(const url of clobUrls){
-      try{
-        const d=await getJSON(url);
-        let p=Number(d?.mid ?? d?.price);
-        if(Number.isFinite(p)){
-          if(p<=1) p*=100;
-          if(p>=0 && p<=100) return {yPct:p,opponentName,market:m,source:"CLOB"};
-        }
-      }catch(e){ console.warn("Polymarket CLOB price unavailable",e); }
+  try{
+    const vals=await Promise.all([clobMid(tokenIds[yi]),clobMid(tokenIds[oi])]);
+    const yp=vals[0], op=vals[1];
+    if(yp!==null && op!==null && yp+op>0){
+      const normalized=100*yp/(yp+op);
+      if(normalized>0 && normalized<100)
+        return {yPct:normalized,opponentName,market:moneyline,source:"CLOB"};
     }
-  }
+  }catch(e){ console.warn("Polymarket CLOB midpoint unavailable",e); }
 
-  // Fallback only if CLOB cannot be reached.
-  if(yi>=0 && Number.isFinite(gammaPrices[yi])){
-    let p=gammaPrices[yi]; if(p<=1) p*=100;
-    if(p>=0 && p<=100) return {yPct:p,opponentName,market:m,source:"Gamma"};
-  }
-
-  const lp=Number(m.lastTradePrice ?? m.last_trade_price);
-  if(Number.isFinite(lp)){
-    const question=[m.question,m.title].filter(Boolean).join(" ");
-    if(textHasTeam(question,"New York Yankees")){
-      const p=lp<=1?lp*100:lp;
-      if(p>=0&&p<=100) return {yPct:p,opponentName,market:m,source:"Gamma"};
+  // Gamma fallback must also use the verified two-team moneyline outcomes.
+  if(Number.isFinite(gammaPrices[yi]) && Number.isFinite(gammaPrices[oi])){
+    let yp=gammaPrices[yi], op=gammaPrices[oi];
+    if(yp>1) yp/=100;
+    if(op>1) op/=100;
+    if(yp>0 && op>0 && yp+op>0){
+      const normalized=100*yp/(yp+op);
+      if(normalized>0 && normalized<100)
+        return {yPct:normalized,opponentName,market:moneyline,source:"Gamma"};
     }
   }
-  throw new Error("Matching Polymarket market has no usable Yankees price");
+  throw new Error("Verified Polymarket moneyline has no usable two-sided price");
 }
 
 async function loadWinPrediction(g){
@@ -2260,6 +2258,7 @@ async function loadMainGame(){
   if(!g){ $("mainGame").innerHTML='<div class="error">No Yankees game found.</div>'; return; }
 
   liveGame=g.status?.abstractGameState==="Live";
+    window.yankeesPregameActive = !liveGame && /preview|warmup|pre-?game|scheduled/i.test(`${g.status?.abstractGameState||""} ${g.status?.detailedState||""}`);
     detectOpponentRunScore(g);
   checkYankeesGameStart(g.gamePk,g.status?.abstractGameState,previousStates.get(g.gamePk));
 
@@ -3021,6 +3020,7 @@ async function loadPlayByPlay(){
 
 async function refreshAll(){
   liveGame=false;
+  window.yankeesPregameActive=false;
   const refreshBtn=$("refreshBtn");
   if(refreshBtn) refreshBtn.disabled=true;
   if($("updated")) $("updated").textContent="Refreshing…";
@@ -3038,7 +3038,7 @@ async function refreshAll(){
   if($("updated")) $("updated").textContent="Updated "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"});
 
   clearTimeout(timer);
-  const refreshMs=liveGame ? 15*1000 : 15*60*1000;
+  const refreshMs=(liveGame || window.yankeesPregameActive) ? 15*1000 : 15*60*1000;
   timer=setTimeout(refreshAll,refreshMs);
 
   const rate=liveGame ? "Auto-refreshes every 15 seconds during live games" : "Auto-refreshes every 15 minutes";
