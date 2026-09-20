@@ -1241,7 +1241,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v157</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v158</span>
   </div>
 </div>
 
@@ -1428,7 +1428,7 @@ function showHomeRunCelebration(){
   el.classList.remove("show");
   void el.offsetWidth;
   el.classList.add("show");
-  window.__hrCelebrationTimer=setTimeout(()=>el.classList.remove("show"),6500);
+  window.__hrCelebrationTimer=setTimeout(()=>el.classList.remove("show"),13000);
 }
 function hideRunCelebration(){
   const el=$("runCelebration");
@@ -1446,7 +1446,7 @@ function showRunCelebration(){
   el.classList.remove("show");
   void el.offsetWidth;
   el.classList.add("show");
-  runBannerTimer=setTimeout(()=>el.classList.remove("show"),5000);
+  runBannerTimer=setTimeout(()=>el.classList.remove("show"),10000);
 }
 
 
@@ -1479,7 +1479,7 @@ function showGameStartCelebration(){
   el.classList.remove("show");
   void el.offsetWidth;
   el.classList.add("show");
-  window.__gameStartCelebrationTimer=setTimeout(()=>el.classList.remove("show"),6500);
+  window.__gameStartCelebrationTimer=setTimeout(()=>el.classList.remove("show"),13000);
 }
 
 /* Fire once when this dashboard observes a scheduled Yankees game transition
