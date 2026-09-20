@@ -1176,7 +1176,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v139</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v140</span>
   </div>
 </div>
 
@@ -1279,7 +1279,7 @@ function playRunCheer(){
 
 
 function playHomeRunSound(){
-  if(!soundsEnabled) return;
+  if(!soundEnabled) return;
   const siren=document.getElementById("hrGoalSiren");
   if(!siren) return;
   try{
