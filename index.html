@@ -1009,6 +1009,14 @@ strong .at-bat-summary{
   display:none!important;
 }
 
+
+.polymarket-prediction-info{
+  margin-top:4px;
+  font-size:11px;
+  line-height:1.35;
+  color:#9fb2cc;
+}
+.polymarket-prediction-info strong{color:#d8e6f7}
 </style>
 </head>
 <body>
@@ -1176,7 +1184,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v148</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v151</span>
   </div>
 </div>
 
@@ -1934,7 +1942,7 @@ function renderWinPrediction(yPct, opponentPct, opponentName, title, note){
     sourceLine.style.cssText="margin-top:5px;color:var(--muted)";
     box.insertAdjacentElement("afterend",sourceLine);
   }
-  sourceLine.textContent="Analysis generated from current MLB matchup, standings and recent-game data.";
+  sourceLine.textContent="Analysis generated from current MLB matchup, standings and recent-game data. Prediction source: Polymarket.";
 }
 
 let lastPregameWinPrediction=null;
@@ -2035,7 +2043,46 @@ async function getPolymarketGameProbability(g){
   throw new Error("Verified Polymarket moneyline has no usable two-sided price");
 }
 
+
+function updatePolymarketPredictionInfo(pm){
+  let el=document.getElementById("polymarketPredictionInfo");
+  if(!el){
+    const source=[...document.querySelectorAll("#scoutingReport *")].find(x=>
+      (x.textContent||"").trim()==="Analysis generated from current MLB matchup, standings and recent-game data. Prediction source: Polymarket."
+    );
+    if(source){
+      el=document.createElement("div");
+      el.id="polymarketPredictionInfo";
+      el.className="polymarket-prediction-info";
+      source.insertAdjacentElement("afterend",el);
+    }
+  }
+  if(!el) return;
+  if(pm && Number.isFinite(Number(pm.yPct))){
+    const y=Math.round(Number(pm.yPct));
+    const o=100-y;
+    const stateLabel=pm.stateLabel||"Live";
+    el.innerHTML=`<strong>Polymarket prediction (${stateLabel}):</strong> Yankees ${y}% • ${pm.opponentName||"Opponent"} ${o}% • Moneyline market`;
+  }else{
+    el.innerHTML=`<strong>Polymarket prediction:</strong> Market data unavailable`;
+  }
+}
+
+
+function setPolymarketPostgameInfo(g){
+  let el=document.getElementById("polymarketPredictionInfo");
+  if(!el){
+    updatePolymarketPredictionInfo(null);
+    el=document.getElementById("polymarketPredictionInfo");
+  }
+  if(el) el.innerHTML=`<strong>Polymarket prediction (Postgame):</strong> Game complete • Live moneyline market closed`;
+}
+
 async function loadWinPrediction(g){
+  const predictionGameState=`${g?.status?.abstractGameState||""} ${g?.status?.detailedState||""}`.toLowerCase();
+  const predictionPostgame=/final|game over|completed/.test(predictionGameState);
+  if(predictionPostgame) setPolymarketPostgameInfo(g);
+  else updatePolymarketPredictionInfo(null);
   if(!g) return;
   let box=$("winPrediction");
   if(!box){
@@ -2061,6 +2108,9 @@ async function loadWinPrediction(g){
   if(state==="Live" || /warmup/i.test(g.status?.detailedState||"")){
     try{
       const pm=await getPolymarketGameProbability(g);
+      const gs=`${g.status?.abstractGameState||""} ${g.status?.detailedState||""}`.toLowerCase();
+      pm.stateLabel=/final|game over|completed/.test(gs)?"Postgame":(/live|warmup|in progress/.test(gs)?"Live":"Pregame");
+      updatePolymarketPredictionInfo(pm);
       renderWinPrediction(
         pm.yPct,100-pm.yPct,pm.opponentName,
         "PREDICTION MARKET — LIVE",
@@ -2091,7 +2141,8 @@ async function loadWinPrediction(g){
       }
     }catch(e){ console.warn("MLB probability fallback unavailable",e); }
 
-    box.innerHTML=`<div class="win-prediction-title">PREDICTION MARKET — LIVE</div><div class="win-prediction-row"><div class="win-prediction-team">YANKEES</div><div class="win-prediction-pct">MARKET DATA UNAVAILABLE</div><div class="win-prediction-team">${tickerEscape(opponentName).toUpperCase()}</div></div>`;
+    box.innerHTML=`<div class="win-prediction-title">PREDICTION MARKET — LIVE</div>
+<div id="polymarketPredictionInfo" class="polymarket-prediction-info">Polymarket prediction: waiting for verified moneyline data…</div><div class="win-prediction-row"><div class="win-prediction-team">YANKEES</div><div class="win-prediction-pct">MARKET DATA UNAVAILABLE</div><div class="win-prediction-team">${tickerEscape(opponentName).toUpperCase()}</div></div>`;
     return;
   }
 
@@ -2112,6 +2163,9 @@ async function loadWinPrediction(g){
   // Prefer a live Polymarket market price before first pitch.
   try{
     const pm=await getPolymarketGameProbability(g);
+      const gs=`${g.status?.abstractGameState||""} ${g.status?.detailedState||""}`.toLowerCase();
+      pm.stateLabel=/final|game over|completed/.test(gs)?"Postgame":(/live|warmup|in progress/.test(gs)?"Live":"Pregame");
+      updatePolymarketPredictionInfo(pm);
     renderWinPrediction(pm.yPct,100-pm.yPct,pm.opponentName,"PREDICTION MARKET — PREGAME",pm.source==="CLOB" ? "Polymarket live CLOB midpoint" : "Polymarket market-implied probability");
     return;
   }catch(pmErr){
