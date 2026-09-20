@@ -1184,7 +1184,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v153</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v154</span>
   </div>
 </div>
 
@@ -1427,10 +1427,14 @@ function showGameStartCelebration(){
 
 /* Fire once when this dashboard observes a scheduled Yankees game transition
    from Preview to Live. Never fire merely because the page was opened mid-game. */
-function checkYankeesGameStart(gamePk,currentState,previousState){
+function checkYankeesGameStart(gamePk,currentState,previousState,currentDetailedState="",previousDetailedState=""){
   if(!gamePk) return;
   const key=`yankees-game-start-fired-${gamePk}`;
-  if(currentState==="Live" && previousState==="Preview" && !localStorage.getItem(key)){
+  const now=`${currentState||""} ${currentDetailedState||""}`.toLowerCase();
+  const before=`${previousState||""} ${previousDetailedState||""}`.toLowerCase();
+  const actualGameStarted=currentState==="Live" && /in progress|live/.test(now) && !/warmup/.test(now);
+  const wasPregame=/preview|scheduled|pre-?game|warmup/.test(before);
+  if(actualGameStarted && wasPregame && !localStorage.getItem(key)){
     localStorage.setItem(key,"1");
     playGameStartSound();
     showGameStartCelebration();
@@ -2298,6 +2302,12 @@ async function loadMainGame(){
       localStorage.getItem(`yankees-main-state-${game.gamePk}`) || ""
     ])
   );
+  const previousDetailedStates=new Map(
+    games.map(game=>[
+      game.gamePk,
+      localStorage.getItem(`yankees-main-detail-${game.gamePk}`) || ""
+    ])
+  );
 
   let recentFinal=null;
   let recentFinalAt=0;
@@ -2330,6 +2340,10 @@ async function loadMainGame(){
       `yankees-main-state-${game.gamePk}`,
       game.status?.abstractGameState || ""
     );
+    localStorage.setItem(
+      `yankees-main-detail-${game.gamePk}`,
+      game.status?.detailedState || ""
+    );
   });
 
   // During a live game, always show LIVE.
@@ -2351,7 +2365,13 @@ async function loadMainGame(){
   liveGame=g.status?.abstractGameState==="Live";
     window.yankeesPregameActive = !liveGame && /preview|warmup|pre-?game|scheduled/i.test(`${g.status?.abstractGameState||""} ${g.status?.detailedState||""}`);
     detectOpponentRunScore(g);
-  checkYankeesGameStart(g.gamePk,g.status?.abstractGameState,previousStates.get(g.gamePk));
+  checkYankeesGameStart(
+    g.gamePk,
+    g.status?.abstractGameState,
+    previousStates.get(g.gamePk),
+    g.status?.detailedState,
+    previousDetailedStates.get(g.gamePk)
+  );
 
   const mainHeading=$("mainGameHeading");
   if(mainHeading){
