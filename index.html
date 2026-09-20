@@ -1184,7 +1184,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v151</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v153</span>
   </div>
 </div>
 
@@ -1966,53 +1966,76 @@ function textHasTeam(s,name){
 }
 async function getPolymarketGameProbability(g){
   const yHome=g.teams?.home?.team?.id===YANKEES;
-  const opponentName=(yHome?g.teams?.away?.team?.name:g.teams?.home?.team?.name)||"Opponent";
+  const opponent=(yHome?g.teams?.away?.team:g.teams?.home?.team)||{};
+  const opponentName=opponent.name||"Opponent";
   const gameDay=nyDateString(new Date(g.gameDate||Date.now()));
 
-  // Discover the event, but ONLY accept the actual two-team MONEYLINE market.
-  // This prevents a Yankees prop/team-total token from being mistaken for game winner.
-  const q=encodeURIComponent(`New York Yankees ${opponentName} ${gameDay}`);
-  const discovery=[
-    `https://gamma-api.polymarket.com/public-search?q=${q}`,
-    `https://gamma-api.polymarket.com/events?active=true&closed=false&limit=200`
-  ];
+  // Polymarket sports markets commonly use team abbreviations (NYY, ARI, BOS, etc.)
+  // in the actual moneyline outcomes, not the full MLB team names.
+  const polyAbbrByMlbId={
+    108:"laa",109:"ari",110:"bal",111:"bos",112:"chc",113:"cin",114:"cle",
+    115:"col",116:"det",117:"hou",118:"kc",119:"lad",120:"wsh",121:"nym",
+    133:"oak",134:"pit",135:"sd",136:"sea",137:"sf",138:"stl",139:"tb",
+    140:"tex",141:"tor",142:"min",143:"phi",144:"atl",145:"cws",146:"mia",
+    147:"nyy",158:"mil"
+  };
+  const yAbbr="nyy";
+  const oAbbr=polyAbbrByMlbId[opponent.id]||"";
+  const exactSlug=oAbbr ? `mlb-${yAbbr}-${oAbbr}-${gameDay}` : "";
+
+  function outcomeMatches(value,fullName,abbr){
+    const s=String(value||"").trim().toLowerCase();
+    if(abbr && s===abbr.toLowerCase()) return true;
+    return textHasTeam(s,fullName);
+  }
+
+  // First hit Polymarket by its deterministic MLB event slug. This avoids the
+  // broad active-market search missing the game or selecting a prop market.
+  const discovery=[];
+  if(exactSlug) discovery.push(`https://gamma-api.polymarket.com/events?slug=${encodeURIComponent(exactSlug)}`);
+  discovery.push(`https://gamma-api.polymarket.com/public-search?q=${encodeURIComponent(`New York Yankees ${opponentName} ${gameDay}`)}`);
+
   let events=[];
   for(const url of discovery){
     try{
       const d=await getJSON(url);
       const arr=Array.isArray(d)?d:(d?.events||d?.data||[]);
       events.push(...arr);
+      if(arr.length && exactSlug && url.includes("events?slug=")) break;
     }catch(e){ console.warn("Polymarket discovery unavailable",e); }
   }
 
-  let moneyline=null, yi=-1, oi=-1, outcomes=[], tokenIds=[], gammaPrices=[];
+  let moneyline=null, yi=-1, oi=-1, tokenIds=[], gammaPrices=[];
   for(const ev of events){
+    const evSlug=String(ev?.slug||"").toLowerCase();
     const eventText=[ev.title,ev.question,ev.slug,ev.description].filter(Boolean).join(" ");
-    if(!(textHasTeam(eventText,"New York Yankees") && textHasTeam(eventText,opponentName))) continue;
+    const exactEvent=exactSlug && evSlug===exactSlug.toLowerCase();
+    if(!exactEvent && !(textHasTeam(eventText,"New York Yankees") && textHasTeam(eventText,opponentName))) continue;
 
     for(const m of (ev.markets||[])){
       const outs=parseMaybeJSON(m.outcomes);
       if(outs.length!==2) continue;
-      const yIndex=outs.findIndex(o=>textHasTeam(String(o),"New York Yankees"));
-      const oIndex=outs.findIndex(o=>textHasTeam(String(o),opponentName));
+
+      const yIndex=outs.findIndex(o=>outcomeMatches(o,"New York Yankees",yAbbr));
+      const oIndex=outs.findIndex(o=>outcomeMatches(o,opponentName,oAbbr));
       if(yIndex<0 || oIndex<0 || yIndex===oIndex) continue;
 
       const txt=[m.question,m.title,m.slug,m.description].filter(Boolean).join(" ").toLowerCase();
-      if(/(total|runs|run line|spread|inning|hits|home runs|strikeouts|rbi|first|team total|player)/.test(txt)) continue;
+      if(/(total|runs|run line|spread|inning|hits|home runs|strikeouts|rbi|first|team total|player|over\/under)/.test(txt)) continue;
 
       const ids=parseMaybeJSON(m.clobTokenIds || m.clob_token_ids);
       const prices=parseMaybeJSON(m.outcomePrices).map(Number);
       if(ids.length!==2) continue;
 
-      moneyline=m; yi=yIndex; oi=oIndex; outcomes=outs; tokenIds=ids; gammaPrices=prices;
+      moneyline=m; yi=yIndex; oi=oIndex; tokenIds=ids; gammaPrices=prices;
       break;
     }
     if(moneyline) break;
   }
-  if(!moneyline) throw new Error("No exact Yankees/opponent Polymarket moneyline found");
 
-  // Read BOTH sides from the live CLOB and normalize them. A single side can have
-  // stale/empty-book artifacts near 0 or 1, which caused the incorrect 0%-100%.
+  if(!moneyline) throw new Error(`No verified Polymarket MLB moneyline found${exactSlug?` for ${exactSlug}`:""}`);
+
+  // Read both live order-book midpoints and normalize them to 100%.
   async function clobMid(token){
     const d=await getJSON(`https://clob.polymarket.com/midpoint?token_id=${encodeURIComponent(token)}`);
     const p=Number(d?.mid);
@@ -2025,11 +2048,11 @@ async function getPolymarketGameProbability(g){
     if(yp!==null && op!==null && yp+op>0){
       const normalized=100*yp/(yp+op);
       if(normalized>0 && normalized<100)
-        return {yPct:normalized,opponentName,market:moneyline,source:"CLOB"};
+        return {yPct:normalized,opponentName,market:moneyline,source:"CLOB",eventSlug:exactSlug};
     }
   }catch(e){ console.warn("Polymarket CLOB midpoint unavailable",e); }
 
-  // Gamma fallback must also use the verified two-team moneyline outcomes.
+  // Gamma's current outcomePrices are the verified moneyline fallback.
   if(Number.isFinite(gammaPrices[yi]) && Number.isFinite(gammaPrices[oi])){
     let yp=gammaPrices[yi], op=gammaPrices[oi];
     if(yp>1) yp/=100;
@@ -2037,12 +2060,12 @@ async function getPolymarketGameProbability(g){
     if(yp>0 && op>0 && yp+op>0){
       const normalized=100*yp/(yp+op);
       if(normalized>0 && normalized<100)
-        return {yPct:normalized,opponentName,market:moneyline,source:"Gamma"};
+        return {yPct:normalized,opponentName,market:moneyline,source:"Gamma",eventSlug:exactSlug};
     }
   }
-  throw new Error("Verified Polymarket moneyline has no usable two-sided price");
-}
 
+  throw new Error("Verified Polymarket moneyline has no usable live price");
+}
 
 function updatePolymarketPredictionInfo(pm){
   let el=document.getElementById("polymarketPredictionInfo");
@@ -2110,7 +2133,14 @@ async function loadWinPrediction(g){
       const pm=await getPolymarketGameProbability(g);
       const gs=`${g.status?.abstractGameState||""} ${g.status?.detailedState||""}`.toLowerCase();
       pm.stateLabel=/final|game over|completed/.test(gs)?"Postgame":(/live|warmup|in progress/.test(gs)?"Live":"Pregame");
-      updatePolymarketPredictionInfo(pm);
+      if(pm.stateLabel==="Live"){
+        const info=document.getElementById("polymarketPredictionInfo");
+        if(info) info.style.display="none";
+      }else{
+        const info=document.getElementById("polymarketPredictionInfo");
+        if(info) info.style.display="";
+        updatePolymarketPredictionInfo(pm);
+      }
       renderWinPrediction(
         pm.yPct,100-pm.yPct,pm.opponentName,
         "PREDICTION MARKET — LIVE",
@@ -2142,7 +2172,7 @@ async function loadWinPrediction(g){
     }catch(e){ console.warn("MLB probability fallback unavailable",e); }
 
     box.innerHTML=`<div class="win-prediction-title">PREDICTION MARKET — LIVE</div>
-<div id="polymarketPredictionInfo" class="polymarket-prediction-info">Polymarket prediction: waiting for verified moneyline data…</div><div class="win-prediction-row"><div class="win-prediction-team">YANKEES</div><div class="win-prediction-pct">MARKET DATA UNAVAILABLE</div><div class="win-prediction-team">${tickerEscape(opponentName).toUpperCase()}</div></div>`;
+<div id="polymarketPredictionInfo" class="polymarket-prediction-info">Polymarket prediction: Market data unavailable</div><div class="win-prediction-row"><div class="win-prediction-team">YANKEES</div><div class="win-prediction-pct">MARKET DATA UNAVAILABLE</div><div class="win-prediction-team">${tickerEscape(opponentName).toUpperCase()}</div></div>`;
     return;
   }
 
@@ -2165,7 +2195,14 @@ async function loadWinPrediction(g){
     const pm=await getPolymarketGameProbability(g);
       const gs=`${g.status?.abstractGameState||""} ${g.status?.detailedState||""}`.toLowerCase();
       pm.stateLabel=/final|game over|completed/.test(gs)?"Postgame":(/live|warmup|in progress/.test(gs)?"Live":"Pregame");
-      updatePolymarketPredictionInfo(pm);
+      if(pm.stateLabel==="Live"){
+        const info=document.getElementById("polymarketPredictionInfo");
+        if(info) info.style.display="none";
+      }else{
+        const info=document.getElementById("polymarketPredictionInfo");
+        if(info) info.style.display="";
+        updatePolymarketPredictionInfo(pm);
+      }
     renderWinPrediction(pm.yPct,100-pm.yPct,pm.opponentName,"PREDICTION MARKET — PREGAME",pm.source==="CLOB" ? "Polymarket live CLOB midpoint" : "Polymarket market-implied probability");
     return;
   }catch(pmErr){
