@@ -922,6 +922,93 @@ strong .at-bat-summary{
 
 /* v111: Judge number/position in Yankees navy */
 .judge-number{color:#fff!important;}
+
+/* v128: pregame model + live MLB win probability */
+.win-prediction{
+  margin-top:10px;
+  padding:11px 12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:rgba(255,255,255,.035);
+}
+.win-prediction-title{
+  font-size:11px;
+  font-weight:1000;
+  letter-spacing:.10em;
+  color:#dbe8ff;
+  text-align:center;
+  margin-bottom:8px;
+}
+.win-prediction-row{
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  align-items:center;
+  gap:10px;
+}
+.win-prediction-team{
+  font-size:13px;
+  font-weight:900;
+  color:var(--ink);
+}
+.win-prediction-team:last-child{text-align:right}
+.win-prediction-pct{
+  font-size:22px;
+  line-height:1;
+  font-weight:1000;
+  color:#fff;
+}
+.win-prediction-bar{
+  display:flex;
+  height:8px;
+  overflow:hidden;
+  border-radius:999px;
+  margin-top:9px;
+  background:rgba(255,255,255,.08);
+}
+.win-prediction-bar > span{display:block;height:100%}
+.win-prediction-yankees{background:#dbe8ff}
+.win-prediction-opponent{background:#8fa4cc}
+.win-prediction-note{
+  margin-top:7px;
+  text-align:center;
+  font-size:10px;
+  line-height:1.35;
+  color:var(--muted);
+}
+
+
+/* v130: compact two-line win prediction matching scouting report */
+#winPrediction{
+  margin-top:6px!important;
+  padding:8px 10px!important;
+  border-radius:10px!important;
+}
+#winPrediction .win-prediction-title{
+  font-size:10px!important;
+  margin-bottom:4px!important;
+  text-align:left!important;
+}
+#winPrediction .win-prediction-row{
+  display:block!important;
+}
+#winPrediction .win-prediction-team{
+  display:inline!important;
+  font-size:12px!important;
+}
+#winPrediction .win-prediction-team:last-child{
+  text-align:left!important;
+}
+#winPrediction .win-prediction-pct{
+  display:inline!important;
+  font-size:12px!important;
+  line-height:1.35!important;
+  margin:0 5px!important;
+}
+#winPrediction .win-prediction-bar,
+#winPrediction .win-prediction-note{
+  display:none!important;
+}
+
 </style>
 </head>
 <body>
@@ -963,6 +1050,7 @@ strong .at-bat-summary{
           <div style="font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.10em">SCOUTING REPORT</div>
           <div class="tiny" style="margin-top:7px">Loading matchup analysis…</div>
         </div>
+
       </div>
     </div>
 
@@ -1088,7 +1176,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v127</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v139</span>
   </div>
 </div>
 
@@ -1572,13 +1660,15 @@ async function loadScoutingReport(g){
       <div style="margin-top:11px;padding:11px 12px;border-radius:12px;background:rgba(0,48,135,.22);border:1px solid rgba(255,255,255,.16)">
         <div class="tiny" style="line-height:1.55"><strong>🔑 KEY TO THE GAME:</strong> ${key}</div>
       </div>
-      <div class="tiny" style="margin-top:8px;opacity:.65">Analysis generated from current MLB matchup, standings and recent-game data.</div>`;
+      `;
   }catch(e){
     console.warn("Scouting report failed",e);
     box.innerHTML=`
       <div style="font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.10em">SCOUTING REPORT</div>
       <div class="tiny" style="margin-top:7px">Matchup analysis temporarily unavailable.</div>`;
   }
+
+  loadWinPrediction(g).catch(e=>console.warn("Win prediction refresh failed",e));
 }
 
 function markSectionError(id,msg="Temporarily unavailable"){
@@ -1720,6 +1810,311 @@ function tickerEscape(value){
 
 // NEWS section/feed removed.
 
+
+function clampNumber(n,min,max){
+  return Math.max(min,Math.min(max,n));
+}
+
+async function getTeamRecentForm(teamId, gameDate, count=10){
+  const end=new Date(new Date(gameDate).getTime()-86400000);
+  const start=new Date(end.getTime()-18*86400000);
+  const data=await getJSON(`${API}/schedule?sportId=1&teamId=${teamId}&startDate=${nyDateString(start)}&endDate=${nyDateString(end)}&hydrate=team`);
+  const games=(data.dates||[]).flatMap(d=>d.games||[])
+    .filter(x=>x.status?.abstractGameState==="Final")
+    .sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate))
+    .slice(-count);
+  let wins=0;
+  games.forEach(x=>{
+    const side=x.teams.home.team.id===teamId ? x.teams.home : x.teams.away;
+    const other=x.teams.home.team.id===teamId ? x.teams.away : x.teams.home;
+    if(Number(side.score)>Number(other.score)) wins++;
+  });
+  return {wins, games:games.length, pct:games.length ? wins/games.length : .5};
+}
+
+async function getStarterEra(personId, seasonYear){
+  if(!personId) return null;
+  try{
+    const d=await getJSON(`${API}/people/${personId}/stats?stats=season&group=pitching&season=${seasonYear}`);
+    const stat=d.stats?.[0]?.splits?.[0]?.stat;
+    const era=parseFloat(stat?.era);
+    return Number.isFinite(era) ? era : null;
+  }catch(e){
+    console.warn("Starter ERA unavailable",e);
+    return null;
+  }
+}
+
+function renderWinPrediction(yPct, opponentPct, opponentName, title, note){
+  const box=$("winPrediction");
+  if(!box) return;
+  const y=Math.round(clampNumber(yPct,0,100));
+  const o=100-y;
+  box.innerHTML=`
+    <div class="win-prediction-title">${title}</div>
+    <div class="win-prediction-row">
+      <div class="win-prediction-team">YANKEES</div>
+      <div class="win-prediction-pct">${y}% — ${o}%</div>
+      <div class="win-prediction-team">${tickerEscape(opponentName).toUpperCase()}</div>
+    </div>
+    <div class="win-prediction-bar">
+      <span class="win-prediction-yankees" style="width:${y}%"></span>
+      <span class="win-prediction-opponent" style="width:${o}%"></span>
+    </div>
+    <div class="win-prediction-note">${note}</div>`;
+  let sourceLine=$("scoutingAnalysisSource");
+  if(!sourceLine){
+    sourceLine=document.createElement("div");
+    sourceLine.id="scoutingAnalysisSource";
+    sourceLine.className="tiny";
+    sourceLine.style.cssText="margin-top:5px;color:var(--muted)";
+    box.insertAdjacentElement("afterend",sourceLine);
+  }
+  sourceLine.textContent="Analysis generated from current MLB matchup, standings and recent-game data.";
+}
+
+let lastPregameWinPrediction=null;
+
+
+function parseMaybeJSON(v){
+  if(Array.isArray(v)) return v;
+  if(typeof v!=="string") return [];
+  try{ const x=JSON.parse(v); return Array.isArray(x)?x:[]; }catch(e){ return []; }
+}
+function teamAliases(name){
+  const n=(name||"").toLowerCase();
+  const out=[n];
+  if(n.includes("yankees")) out.push("new york yankees","yankees");
+  if(n.includes("diamondbacks")) out.push("arizona diamondbacks","diamondbacks","d-backs","dbacks");
+  return out;
+}
+function textHasTeam(s,name){
+  const x=(s||"").toLowerCase();
+  return teamAliases(name).some(a=>a && x.includes(a));
+}
+async function getPolymarketGameProbability(g){
+  const yHome=g.teams?.home?.team?.id===YANKEES;
+  const opponentName=(yHome?g.teams?.away?.team?.name:g.teams?.home?.team?.name)||"Opponent";
+  const q=encodeURIComponent(`Yankees ${opponentName}`);
+  const urls=[
+    `https://gamma-api.polymarket.com/public-search?q=${q}`,
+    `https://gamma-api.polymarket.com/events?active=true&closed=false&limit=100`
+  ];
+  let candidates=[];
+  for(const url of urls){
+    try{
+      const d=await getJSON(url);
+      const arr=Array.isArray(d)?d:(d?.events||d?.data||[]);
+      candidates.push(...arr);
+      if(candidates.length) break;
+    }catch(e){ console.warn("Polymarket discovery unavailable",e); }
+  }
+
+  const markets=[];
+  for(const ev of candidates){
+    const hay=[ev.title,ev.question,ev.slug,ev.description].filter(Boolean).join(" ");
+    const eventMatches=textHasTeam(hay,"New York Yankees") && textHasTeam(hay,opponentName);
+    for(const m of (ev.markets||[])){
+      const mh=[hay,m.question,m.title,m.slug].filter(Boolean).join(" ");
+      if(eventMatches || (textHasTeam(mh,"New York Yankees") && textHasTeam(mh,opponentName))) markets.push(m);
+    }
+    if(!ev.markets && eventMatches) markets.push(ev);
+  }
+
+  const m=markets.find(x=>{
+    const s=[x.question,x.title,x.slug].filter(Boolean).join(" ").toLowerCase();
+    return !/(total|runs|run line|spread|inning|hits|home runs|strikeouts|rbi)/.test(s);
+  }) || markets[0];
+  if(!m) throw new Error("No matching Polymarket Yankees game market");
+
+  const outcomes=parseMaybeJSON(m.outcomes);
+  const gammaPrices=parseMaybeJSON(m.outcomePrices).map(Number);
+  const tokenIds=parseMaybeJSON(m.clobTokenIds || m.clob_token_ids);
+
+  let yi=outcomes.findIndex(o=>textHasTeam(String(o),"New York Yankees"));
+  if(yi<0 && outcomes.length===2){
+    const oi=outcomes.findIndex(o=>textHasTeam(String(o),opponentName));
+    if(oi>=0) yi=1-oi;
+  }
+
+  // IMPORTANT: Gamma is discovery/metadata. For LIVE updates use the CLOB token price.
+  if(yi>=0 && tokenIds[yi]){
+    const token=encodeURIComponent(tokenIds[yi]);
+    const clobUrls=[
+      `https://clob.polymarket.com/midpoint?token_id=${token}`,
+      `https://clob.polymarket.com/price?token_id=${token}&side=buy`
+    ];
+    for(const url of clobUrls){
+      try{
+        const d=await getJSON(url);
+        let p=Number(d?.mid ?? d?.price);
+        if(Number.isFinite(p)){
+          if(p<=1) p*=100;
+          if(p>=0 && p<=100) return {yPct:p,opponentName,market:m,source:"CLOB"};
+        }
+      }catch(e){ console.warn("Polymarket CLOB price unavailable",e); }
+    }
+  }
+
+  // Fallback only if CLOB cannot be reached.
+  if(yi>=0 && Number.isFinite(gammaPrices[yi])){
+    let p=gammaPrices[yi]; if(p<=1) p*=100;
+    if(p>=0 && p<=100) return {yPct:p,opponentName,market:m,source:"Gamma"};
+  }
+
+  const lp=Number(m.lastTradePrice ?? m.last_trade_price);
+  if(Number.isFinite(lp)){
+    const question=[m.question,m.title].filter(Boolean).join(" ");
+    if(textHasTeam(question,"New York Yankees")){
+      const p=lp<=1?lp*100:lp;
+      if(p>=0&&p<=100) return {yPct:p,opponentName,market:m,source:"Gamma"};
+    }
+  }
+  throw new Error("Matching Polymarket market has no usable Yankees price");
+}
+
+async function loadWinPrediction(g){
+  if(!g) return;
+  let box=$("winPrediction");
+  if(!box){
+    const scout=$("scoutingReport");
+    if(!scout) return;
+    const mount=document.createElement("div");
+    mount.id="winPrediction";
+    mount.className="win-prediction";
+    scout.appendChild(mount);
+    box=mount;
+  }
+  const state=g.status?.abstractGameState||"";
+  const yHome=g.teams?.home?.team?.id===YANKEES;
+  const ySide=yHome ? g.teams.home : g.teams.away;
+  const oSide=yHome ? g.teams.away : g.teams.home;
+  const opponentName=teamShort(oSide);
+  const seasonYear=new Date(g.gameDate).getFullYear();
+  try{
+    const saved=JSON.parse(localStorage.getItem(`yankees-pregame-prediction-${g.gamePk}`)||"null");
+    if(saved && Number.isFinite(Number(saved.yPct))) lastPregameWinPrediction={yPct:Number(saved.yPct),opponentName:saved.opponentName||opponentName};
+  }catch(e){}
+
+  if(state==="Live" || /warmup/i.test(g.status?.detailedState||"")){
+    try{
+      const pm=await getPolymarketGameProbability(g);
+      renderWinPrediction(
+        pm.yPct,100-pm.yPct,pm.opponentName,
+        "PREDICTION MARKET — LIVE",
+        pm.source==="CLOB" ? "Polymarket live CLOB midpoint" : "Polymarket market-implied probability"
+      );
+      return;
+    }catch(pmErr){
+      console.warn("Polymarket probability unavailable",pmErr);
+    }
+
+    // Fallback to MLB only when no matching Polymarket game market is available.
+    try{
+      const data=await getJSON(`${API}/game/${g.gamePk}/winProbability`);
+      const rows=Array.isArray(data)?data:(data?.winProbability||data?.data||[]);
+      const latest=[...rows].reverse().find(x=>Number.isFinite(Number(x?.homeTeamWinProbability)));
+      if(latest){
+        let hp=Number(latest.homeTeamWinProbability);
+        if(hp>=0&&hp<=1) hp*=100;
+        if(hp>=0&&hp<=100){
+          const yHome=g.teams?.home?.team?.id===YANKEES;
+          const yPct=yHome?hp:100-hp;
+          // Don't present MLB's opening 50/50 as a meaningful live market number.
+          if(Math.abs(yPct-50)>.001){
+            renderWinPrediction(yPct,100-yPct,opponentName,"LIVE WIN PROBABILITY","MLB fallback");
+            return;
+          }
+        }
+      }
+    }catch(e){ console.warn("MLB probability fallback unavailable",e); }
+
+    box.innerHTML=`<div class="win-prediction-title">PREDICTION MARKET — LIVE</div><div class="win-prediction-row"><div class="win-prediction-team">YANKEES</div><div class="win-prediction-pct">MARKET DATA UNAVAILABLE</div><div class="win-prediction-team">${tickerEscape(opponentName).toUpperCase()}</div></div>`;
+    return;
+  }
+
+  if(state==="Final"){
+    const yScore=Number(ySide?.score||0), oScore=Number(oSide?.score||0);
+    if(yScore!==oScore){
+      renderWinPrediction(
+        yScore>oScore ? 100 : 0,
+        yScore>oScore ? 0 : 100,
+        opponentName,
+        "FINAL",
+        "Game complete"
+      );
+    }
+    return;
+  }
+
+  // Prefer a live Polymarket market price before first pitch.
+  try{
+    const pm=await getPolymarketGameProbability(g);
+    renderWinPrediction(pm.yPct,100-pm.yPct,pm.opponentName,"PREDICTION MARKET — PREGAME",pm.source==="CLOB" ? "Polymarket live CLOB midpoint" : "Polymarket market-implied probability");
+    return;
+  }catch(pmErr){
+    console.warn("Pregame Polymarket probability unavailable; using dashboard estimate",pmErr);
+  }
+
+  // Pregame estimate built only from current MLB data already available to the dashboard.
+  try{
+    const standings=await getJSON(`${API}/standings?leagueId=${AL}&season=${seasonYear}&standingsTypes=regularSeason&hydrate=team`);
+    const records=(standings.records||[]).flatMap(r=>r.teamRecords||[]);
+    const yRec=records.find(r=>r.team?.id===YANKEES);
+    const oRec=records.find(r=>r.team?.id===oSide?.team?.id);
+
+    const ySeason=parseFloat(yRec?.winningPercentage);
+    const oSeason=parseFloat(oRec?.winningPercentage);
+    const seasonEdge=(Number.isFinite(ySeason)&&Number.isFinite(oSeason)) ? (ySeason-oSeason)*45 : 0;
+
+    const yGames=Number(yRec?.gamesPlayed||0) || 1;
+    const oGames=Number(oRec?.gamesPlayed||0) || 1;
+    const yRD=Number(yRec?.runDifferential ?? (Number(yRec?.runsScored||0)-Number(yRec?.runsAllowed||0)));
+    const oRD=Number(oRec?.runDifferential ?? (Number(oRec?.runsScored||0)-Number(oRec?.runsAllowed||0)));
+    const rdEdge=(Number.isFinite(yRD)&&Number.isFinite(oRD))
+      ? clampNumber(((yRD/yGames)-(oRD/oGames))*2.5,-8,8)
+      : 0;
+
+    const [yRecent,oRecent]=await Promise.all([
+      getTeamRecentForm(YANKEES,g.gameDate,10),
+      getTeamRecentForm(oSide.team.id,g.gameDate,10)
+    ]);
+    const recentEdge=clampNumber((yRecent.pct-oRecent.pct)*12,-6,6);
+
+    const yStarter=ySide?.probablePitcher;
+    const oStarter=oSide?.probablePitcher;
+    const [yEra,oEra]=await Promise.all([
+      getStarterEra(yStarter?.id,seasonYear),
+      getStarterEra(oStarter?.id,seasonYear)
+    ]);
+    const starterEdge=(Number.isFinite(yEra)&&Number.isFinite(oEra))
+      ? clampNumber((oEra-yEra)*2,-6,6)
+      : 0;
+
+    const homeEdge=yHome ? 3 : -3;
+    const yPct=clampNumber(50+seasonEdge+rdEdge+recentEdge+starterEdge+homeEdge,25,75);
+
+    const factors=[
+      "season record",
+      "run differential",
+      `last ${Math.max(yRecent.games,oRecent.games)} games`,
+      yHome ? "Yankees home field" : "road adjustment"
+    ];
+    if(Number.isFinite(yEra)&&Number.isFinite(oEra)) factors.push("probable-starter ERA");
+
+    lastPregameWinPrediction={yPct,opponentName};
+    try{ localStorage.setItem(`yankees-pregame-prediction-${g.gamePk}`,JSON.stringify(lastPregameWinPrediction)); }catch(e){}
+    renderWinPrediction(
+      yPct,100-yPct,opponentName,
+      "PREGAME WIN PREDICTION",
+      `Dashboard model using ${factors.join(", ")} • estimate, not betting odds`
+    );
+  }catch(e){
+    console.warn("Pregame prediction unavailable",e);
+    box.innerHTML=`<div class="win-prediction-title">PREGAME WIN PREDICTION</div><div class="win-prediction-note">Prediction data is temporarily unavailable.</div>`;
+  }
+}
+
 async function loadMainGame(){
   const today = new Date();
   const start = new Date(today); start.setDate(today.getDate()-1);
@@ -1849,8 +2244,10 @@ async function loadMainGame(){
     </div>
     <div class="status">${info}
       <small>${g.seriesDescription || ""}</small>
-    </div>`;
+    </div>
+`;
   $("mainGame").classList.remove("loading");
+  loadWinPrediction(g).catch(e=>console.warn("Win prediction refresh failed",e));
 }
 
 
