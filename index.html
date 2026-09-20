@@ -1017,6 +1017,63 @@ strong .at-bat-summary{
   color:#9fb2cc;
 }
 .polymarket-prediction-info strong{color:#d8e6f7}
+
+/* v156 Playoff Snapshot readability */
+#playoffRace .playoff-grid{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:10px;
+}
+#playoffRace .playoff-item{
+  min-height:92px;
+  padding:14px 12px;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:12px;
+  background:rgba(255,255,255,.055);
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  text-align:center;
+}
+#playoffRace .playoff-label{
+  display:block;
+  margin-bottom:8px;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.09em;
+  text-transform:uppercase;
+  color:#9fb2cc;
+}
+#playoffRace .playoff-item strong{
+  display:block;
+  color:#fff;
+  font-size:20px;
+  line-height:1.15;
+  font-weight:900;
+}
+#playoffRace .playoff-source{
+  margin-top:10px;
+  text-align:center;
+  font-size:11px;
+  color:#8294ad;
+}
+#playoffRace .playoff-status{
+  margin-top:12px;
+  padding:10px 12px;
+  border-radius:10px;
+  background:rgba(255,255,255,.045);
+  border:1px solid rgba(255,255,255,.10);
+  text-align:center;
+  font-weight:800;
+  color:#dce8f7;
+}
+@media(max-width:760px){
+  #playoffRace .playoff-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+  #playoffRace .playoff-item{min-height:82px;padding:12px 8px;}
+  #playoffRace .playoff-item strong{font-size:17px;}
+
+}
 </style>
 </head>
 <body>
@@ -1184,7 +1241,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v154</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v157</span>
   </div>
 </div>
 
@@ -2534,45 +2591,72 @@ async function loadStandings(){
 }
 
 
-async function loadPlayoffRace(){
-  const box=$("playoffRace");
-  try{
-    const data=await getJSON(`${API}/standings?leagueId=${AL}&season=${season}&standingsTypes=regularSeason&hydrate=team,division`);
-    const records=data.records||[], teams=records.flatMap(r=>r.teamRecords||[]);
-    const y=teams.find(x=>x.team.id===YANKEES); if(!y) throw new Error("No Yankees standings");
-    const div=records.find(r=>(r.teamRecords||[]).some(x=>x.team.id===YANKEES));
-    const divTeams=div?.teamRecords||[], divRank=divTeams.findIndex(x=>x.team.id===YANKEES)+1;
-    const divLeader=divTeams[0];
-    const winners=records.map(r=>(r.teamRecords||[])[0]).filter(Boolean);
-    const winnerIds=new Set(winners.map(x=>x.team.id));
-    const wc=teams.filter(x=>!winnerIds.has(x.team.id))
-      .sort((a,b)=>parseFloat(b.winningPercentage||0)-parseFloat(a.winningPercentage||0));
-    const wcRank=wc.findIndex(x=>x.team.id===YANKEES)+1;
 
-    let status, statusClass="ps-good", seedText="—";
-    if(divRank===1){
-      const seed=[...winners].sort((a,b)=>parseFloat(b.winningPercentage||0)-parseFloat(a.winningPercentage||0))
-        .findIndex(x=>x.team.id===YANKEES)+1;
-      status="AL East Leader"; seedText=seed>0?`#${seed}`:"—";
-    }else if(wcRank>0 && wcRank<=3){
-      status=`Wild Card #${wcRank}`; seedText=`#${3+wcRank}`;
-    }else{
-      status="Outside Current Playoff Field"; statusClass="ps-warn";
+function ordinal(n){
+  n=Number(n);
+  if(!Number.isFinite(n)||n<=0) return "";
+  const v=n%100;
+  return n+((v>=11&&v<=13)?"th":({1:"st",2:"nd",3:"rd"}[n%10]||"th"));
+}
+
+async function loadPlayoffRace(){
+  const el=$("playoffRace");
+  if(!el) return;
+  try{
+    // Pull MLB's current AL standings with clinch indicators and wild-card data.
+    const url=`${API}/standings?leagueId=${AL}&season=${season}&standingsTypes=regularSeason,wildCard&hydrate=team`;
+    const data=await getJSON(url);
+    const records=data.records||[];
+    const rows=records.flatMap(r=>(r.teamRecords||[]).map(tr=>({...tr,_division:r.division,_type:r.standingsType})));
+    const yanks=rows.find(r=>r.team?.id===YANKEES);
+    if(!yanks) throw new Error("Yankees standings unavailable");
+
+    const divisionRows=rows.filter(r=>r._type==="regularSeason" && r._division?.id===AL_EAST);
+    const divisionYanks=divisionRows.find(r=>r.team?.id===YANKEES) || yanks;
+    const divRank=Number(divisionYanks.divisionRank||divisionYanks.leagueRank||0);
+
+    // MLB wild-card records provide wildCardRank for non-division leaders.
+    const wcRows=rows.filter(r=>r._type==="wildCard");
+    const wcYanks=wcRows.find(r=>r.team?.id===YANKEES);
+    const wcRank=Number(wcYanks?.wildCardRank||0);
+
+    // Current postseason seed from MLB standings structure:
+    // division leaders are seeds 1-3 by league rank; Wild Cards are seeds 4-6.
+    // This uses MLB's returned ranks, not the old dashboard heuristic.
+    let seed=null;
+    const isDivisionLeader=divRank===1;
+    if(isDivisionLeader){
+      seed=Number(divisionYanks.leagueRank||0) || null;
+    }else if(wcRank){
+      seed=3+wcRank;
     }
 
-    const gb=(divRank===1)?"—":(y.gamesBack||"—");
-    const clinched=(y.clinched||y.clinchedPostSeason)?"YES":"NOT YET";
-    box.innerHTML=`
-      <div class="ps-status ${statusClass}">${status}</div>
-      <div class="ps-grid">
-        <div class="ps-card"><span>RECORD</span><strong>${y.wins}-${y.losses}</strong><small>${y.winningPercentage||""}</small></div>
-        <div class="ps-card"><span>AL EAST</span><strong>${divRank?`#${divRank}`:"—"}</strong><small>${divRank===1?"Division leader":`${gb} GB`}</small></div>
-        <div class="ps-card"><span>PLAYOFF SEED</span><strong>${seedText}</strong><small>Current AL position</small></div>
-        <div class="ps-card"><span>POSTSEASON</span><strong>${clinched}</strong><small>${clinched==="YES"?"Berth clinched":"Still in race"}</small></div>
+    const wins=Number(yanks.wins??divisionYanks.wins??0);
+    const losses=Number(yanks.losses??divisionYanks.losses??0);
+    const clinch=(yanks.clinchIndicator||divisionYanks.clinchIndicator||wcYanks?.clinchIndicator||"").toLowerCase();
+    const clinchedDivision=clinch.includes("y");
+    const clinchedPlayoffs=clinchedDivision || clinch.includes("x") || clinch.includes("z") || clinch.includes("w");
+
+    const divText=divRank ? `${ordinal(divRank)} in AL East` : "AL East rank unavailable";
+    const gbRaw=divisionYanks.gamesBack;
+    const gamesBackText=(gbRaw==="-" || gbRaw==="0" || gbRaw===0) ? "Division leader" : (gbRaw!=null ? `${gbRaw} GB` : "—");
+    const wcText=isDivisionLeader ? "Division leader" : (wcRank ? `Wild Card #${wcRank}` : "Outside current Wild Card");
+    const seedText=seed ? `#${seed} AL seed` : "Seed not currently available";
+    const postseasonText=clinchedDivision ? "Division clinched" : (clinchedPlayoffs ? "Playoff berth clinched" : "Not yet clinched");
+
+    el.innerHTML=`
+      <div class="playoff-grid">
+        <div class="playoff-item"><span class="playoff-label">Record</span><strong>${wins}-${losses}</strong></div>
+        <div class="playoff-item"><span class="playoff-label">AL East</span><strong>${divText}</strong></div>
+        <div class="playoff-item"><span class="playoff-label">Wild Card</span><strong>${wcText}</strong></div>
+        <div class="playoff-item"><span class="playoff-label">AL Seed</span><strong>${seedText}</strong></div>
+        <div class="playoff-item"><span class="playoff-label">Games Back</span><strong>${gamesBackText}</strong></div>
       </div>
-      <div class="ps-explain"><b>How to read this:</b> Division winners take AL seeds 1–3. The three Wild Card teams take seeds 4–6. This snapshot uses current MLB standings and is not a tiebreaker projection.</div>`;
+      <div class="playoff-status">POSTSEASON STATUS • ${postseasonText}</div>
+      <div class="playoff-source">Live MLB standings &amp; Wild Card data</div>`;
   }catch(e){
-    box.innerHTML='<div class="muted">Playoff snapshot temporarily unavailable.</div>';
+    console.error("Playoff snapshot",e);
+    el.innerHTML='<div class="error">Playoff snapshot temporarily unavailable.</div>';
   }
 }
 
