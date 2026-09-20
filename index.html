@@ -1176,7 +1176,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v140</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v146</span>
   </div>
 </div>
 
@@ -1193,6 +1193,70 @@ let timer;
 
 /* ---------- Yankees live sounds ---------- */
 let soundEnabled = localStorage.getItem("yankees-sounds") !== "off";
+let opponentScoreBaseline = new Map();
+let opponentClickCtx = null;
+
+function playOpponentRunClick(){
+  if(!soundEnabled) return;
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC) return;
+    opponentClickCtx=opponentClickCtx||new AC();
+    const ctx=opponentClickCtx;
+    if(ctx.state==="suspended") ctx.resume().catch(()=>{});
+    const now=ctx.currentTime;
+
+    // Mechanical baseball-scoreboard style "clack":
+    // two very short impacts, a hard low knock followed by a lighter plate snap.
+    function impact(at,freq,duration,level){
+      const osc=ctx.createOscillator();
+      const gain=ctx.createGain();
+      const filter=ctx.createBiquadFilter();
+      osc.type="square";
+      osc.frequency.setValueAtTime(freq,at);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(90,freq*0.42),at+duration);
+      filter.type="bandpass";
+      filter.frequency.value=freq;
+      filter.Q.value=0.7;
+      gain.gain.setValueAtTime(0.0001,at);
+      gain.gain.exponentialRampToValueAtTime(level,at+0.002);
+      gain.gain.exponentialRampToValueAtTime(0.0001,at+duration);
+      const master=ctx.createGain();
+      const compressor=ctx.createDynamicsCompressor();
+      master.gain.value=2.4;
+      compressor.threshold.value=-10;
+      compressor.knee.value=8;
+      compressor.ratio.value=6;
+      compressor.attack.value=0.001;
+      compressor.release.value=0.08;
+      osc.connect(filter); filter.connect(gain); gain.connect(master);
+      master.connect(compressor); compressor.connect(ctx.destination);
+      osc.start(at); osc.stop(at+duration+0.01);
+    }
+    impact(now,260,0.065,0.75);       // heavy CLACK
+    impact(now+0.070,620,0.045,0.52); // quick mechanical snap
+  }catch(e){ console.warn("Opponent scoreboard clack failed",e); }
+}
+function detectOpponentRunScore(g){
+  if(!g?.gamePk) return;
+  const yHome=g.teams?.home?.team?.id===YANKEES;
+  const oppSide=yHome ? g.teams?.away : g.teams?.home;
+  const score=Number(oppSide?.score);
+  if(!Number.isFinite(score)) return;
+  const key=String(g.gamePk);
+  const prev=opponentScoreBaseline.get(key);
+  // Establish baseline silently so opening/reloading never creates a false click.
+  if(prev===undefined){
+    opponentScoreBaseline.set(key,score);
+    return;
+  }
+  if(score>prev){
+    // One short click for each newly detected opponent run.
+    const runs=Math.min(10,Math.max(1,score-prev));
+    for(let n=0;n<runs;n++) setTimeout(playOpponentRunClick,n*140);
+  }
+  opponentScoreBaseline.set(key,score);
+}
 let audioCtx = null;
 let masterSoundGain = null;
 let masterSoundCompressor = null;
@@ -2196,6 +2260,7 @@ async function loadMainGame(){
   if(!g){ $("mainGame").innerHTML='<div class="error">No Yankees game found.</div>'; return; }
 
   liveGame=g.status?.abstractGameState==="Live";
+    detectOpponentRunScore(g);
   checkYankeesGameStart(g.gamePk,g.status?.abstractGameState,previousStates.get(g.gamePk));
 
   const mainHeading=$("mainGameHeading");
