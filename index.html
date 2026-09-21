@@ -1241,7 +1241,7 @@ strong .at-bat-summary{
 
   <div class="footer">
     Unofficial fan dashboard. Data supplied by MLB's public Stats API. MLB and Yankees marks belong to their respective owners.<br>
-    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v158</span>
+    <span style="display:inline-block;margin-top:6px;font-weight:800;letter-spacing:.08em">Dashboard Version v161</span>
   </div>
 </div>
 
@@ -2042,7 +2042,14 @@ async function getPolymarketGameProbability(g){
   };
   const yAbbr="nyy";
   const oAbbr=polyAbbrByMlbId[opponent.id]||"";
-  const exactSlug=oAbbr ? `mlb-${yAbbr}-${oAbbr}-${gameDay}` : "";
+  const awayId=g.teams?.away?.team?.id;
+  const homeId=g.teams?.home?.team?.id;
+  const awayAbbr=polyAbbrByMlbId[awayId]||"";
+  const homeAbbr=polyAbbrByMlbId[homeId]||"";
+  const exactSlug=(awayAbbr && homeAbbr) ? `mlb-${awayAbbr}-${homeAbbr}-${gameDay}` : "";
+  const alternateSlug=oAbbr ? (exactSlug===`mlb-${yAbbr}-${oAbbr}-${gameDay}`
+    ? `mlb-${oAbbr}-${yAbbr}-${gameDay}`
+    : `mlb-${yAbbr}-${oAbbr}-${gameDay}`) : "";
 
   function outcomeMatches(value,fullName,abbr){
     const s=String(value||"").trim().toLowerCase();
@@ -2054,6 +2061,8 @@ async function getPolymarketGameProbability(g){
   // broad active-market search missing the game or selecting a prop market.
   const discovery=[];
   if(exactSlug) discovery.push(`https://gamma-api.polymarket.com/events?slug=${encodeURIComponent(exactSlug)}`);
+  if(alternateSlug && alternateSlug!==exactSlug)
+    discovery.push(`https://gamma-api.polymarket.com/events?slug=${encodeURIComponent(alternateSlug)}`);
   discovery.push(`https://gamma-api.polymarket.com/public-search?q=${encodeURIComponent(`New York Yankees ${opponentName} ${gameDay}`)}`);
 
   let events=[];
@@ -2062,7 +2071,6 @@ async function getPolymarketGameProbability(g){
       const d=await getJSON(url);
       const arr=Array.isArray(d)?d:(d?.events||d?.data||[]);
       events.push(...arr);
-      if(arr.length && exactSlug && url.includes("events?slug=")) break;
     }catch(e){ console.warn("Polymarket discovery unavailable",e); }
   }
 
@@ -2070,7 +2078,8 @@ async function getPolymarketGameProbability(g){
   for(const ev of events){
     const evSlug=String(ev?.slug||"").toLowerCase();
     const eventText=[ev.title,ev.question,ev.slug,ev.description].filter(Boolean).join(" ");
-    const exactEvent=exactSlug && evSlug===exactSlug.toLowerCase();
+    const exactEvent=(exactSlug && evSlug===exactSlug.toLowerCase()) ||
+      (alternateSlug && evSlug===alternateSlug.toLowerCase());
     if(!exactEvent && !(textHasTeam(eventText,"New York Yankees") && textHasTeam(eventText,opponentName))) continue;
 
     for(const m of (ev.markets||[])){
@@ -2108,8 +2117,11 @@ async function getPolymarketGameProbability(g){
     const yp=vals[0], op=vals[1];
     if(yp!==null && op!==null && yp+op>0){
       const normalized=100*yp/(yp+op);
-      if(normalized>0 && normalized<100)
-        return {yPct:normalized,opponentName,market:moneyline,source:"CLOB",eventSlug:exactSlug};
+      if(normalized>0 && normalized<100 && Math.abs(normalized-50)>.01)
+        return {
+          yPct:normalized, opponentName, market:moneyline, source:"CLOB", eventSlug:evSlug||exactSlug,
+          yToken:String(tokenIds[yi]), oToken:String(tokenIds[oi]), yRaw:yp, oRaw:op
+        };
     }
   }catch(e){ console.warn("Polymarket CLOB midpoint unavailable",e); }
 
@@ -2120,12 +2132,172 @@ async function getPolymarketGameProbability(g){
     if(op>1) op/=100;
     if(yp>0 && op>0 && yp+op>0){
       const normalized=100*yp/(yp+op);
-      if(normalized>0 && normalized<100)
-        return {yPct:normalized,opponentName,market:moneyline,source:"Gamma",eventSlug:exactSlug};
+      if(normalized>0 && normalized<100 && Math.abs(normalized-50)>.01)
+        return {
+          yPct:normalized, opponentName, market:moneyline, source:"Gamma", eventSlug:evSlug||exactSlug,
+          yToken:String(tokenIds[yi]), oToken:String(tokenIds[oi]), yRaw:yp, oRaw:op
+        };
     }
   }
 
   throw new Error("Verified Polymarket moneyline has no usable live price");
+}
+
+
+let polymarketWS=null;
+let polymarketWSKey="";
+let polymarketWSReconnectTimer=null;
+let polymarketWSPrices=new Map();
+let polymarketWSConfig=null;
+
+function stopPolymarketLiveStream(){
+  clearTimeout(polymarketWSReconnectTimer);
+  polymarketWSReconnectTimer=null;
+  polymarketWSConfig=null;
+  polymarketWSKey="";
+  polymarketWSPrices.clear();
+  if(polymarketWS){
+    try{ polymarketWS.onclose=null; polymarketWS.close(); }catch(e){}
+    polymarketWS=null;
+  }
+}
+
+function polymarketPriceFromBook(msg){
+  const bids=Array.isArray(msg?.bids)?msg.bids:[];
+  const asks=Array.isArray(msg?.asks)?msg.asks:[];
+  const bestBid=bids.length ? Math.max(...bids.map(x=>Number(x.price)).filter(Number.isFinite)) : NaN;
+  const bestAsk=asks.length ? Math.min(...asks.map(x=>Number(x.price)).filter(Number.isFinite)) : NaN;
+  if(Number.isFinite(bestBid) && Number.isFinite(bestAsk) && bestBid>0 && bestAsk<1 && bestAsk>=bestBid)
+    return (bestBid+bestAsk)/2;
+  return null;
+}
+
+function updatePolymarketRealtimeDisplay(){
+  const c=polymarketWSConfig;
+  if(!c) return;
+  const yp=Number(polymarketWSPrices.get(c.yToken));
+  const op=Number(polymarketWSPrices.get(c.oToken));
+  if(!(yp>0 && yp<1 && op>0 && op<1 && yp+op>0)) return;
+  const yPct=100*yp/(yp+op);
+  if(Math.abs(yPct-50)<=.01) return;
+
+  renderWinPrediction(
+    yPct,100-yPct,c.opponentName,
+    c.isLive ? "PREDICTION MARKET — LIVE" : "PREDICTION MARKET — PREGAME",
+    "Polymarket real-time CLOB WebSocket"
+  );
+
+  // User asked to hide the extra detail line during live games.
+  const info=document.getElementById("polymarketPredictionInfo");
+  if(c.isLive){
+    if(info) info.style.display="none";
+  }else{
+    if(info) info.style.display="";
+    updatePolymarketPredictionInfo({
+      yPct, opponentName:c.opponentName, stateLabel:"Pregame"
+    });
+  }
+}
+
+function handlePolymarketWSMessage(raw){
+  let payload;
+  try{ payload=JSON.parse(raw); }catch(e){ return; }
+  const msgs=Array.isArray(payload)?payload:[payload];
+
+  for(const msg of msgs){
+    const type=String(msg?.event_type||msg?.type||"").toLowerCase();
+
+    // Full order-book snapshot.
+    if(type==="book" || (msg?.asset_id && (msg?.bids||msg?.asks))){
+      const token=String(msg.asset_id||msg.token_id||"");
+      const p=polymarketPriceFromBook(msg);
+      if(token && p!==null) polymarketWSPrices.set(token,p);
+    }
+
+    // Incremental CLOB price changes. Newer messages can contain a "price_changes" array.
+    const changes=Array.isArray(msg?.price_changes) ? msg.price_changes : [];
+    for(const ch of changes){
+      const token=String(ch.asset_id||ch.token_id||"");
+      const bid=Number(ch.best_bid), ask=Number(ch.best_ask), traded=Number(ch.price);
+      let p=null;
+      if(bid>0 && bid<1 && ask>0 && ask<1 && ask>=bid) p=(bid+ask)/2;
+      else if(traded>0 && traded<1) p=traded;
+      if(token && p!==null) polymarketWSPrices.set(token,p);
+    }
+
+    // Last-trade / direct price messages.
+    if(type==="last_trade_price" || type==="price_change"){
+      const token=String(msg.asset_id||msg.token_id||"");
+      const bid=Number(msg.best_bid), ask=Number(msg.best_ask), px=Number(msg.price);
+      let p=null;
+      if(bid>0 && bid<1 && ask>0 && ask<1 && ask>=bid) p=(bid+ask)/2;
+      else if(px>0 && px<1) p=px;
+      if(token && p!==null) polymarketWSPrices.set(token,p);
+    }
+  }
+  updatePolymarketRealtimeDisplay();
+}
+
+function startPolymarketLiveStream(pm,g){
+  if(!pm?.yToken || !pm?.oToken || !g?.gamePk || typeof WebSocket==="undefined") return;
+
+  const gs=`${g.status?.abstractGameState||""} ${g.status?.detailedState||""}`.toLowerCase();
+  const isPost=/final|game over|completed/.test(gs);
+  if(isPost){ stopPolymarketLiveStream(); return; }
+
+  const isLive=/live|in progress/.test(gs) && !/warmup/.test(gs);
+  const key=`${g.gamePk}:${pm.yToken}:${pm.oToken}`;
+  polymarketWSConfig={
+    key, gamePk:g.gamePk, yToken:String(pm.yToken), oToken:String(pm.oToken),
+    opponentName:pm.opponentName||"Opponent", isLive
+  };
+
+  if(pm.yRaw>0 && pm.yRaw<1) polymarketWSPrices.set(String(pm.yToken),Number(pm.yRaw));
+  if(pm.oRaw>0 && pm.oRaw<1) polymarketWSPrices.set(String(pm.oToken),Number(pm.oRaw));
+
+  if(polymarketWSKey===key && polymarketWS &&
+     (polymarketWS.readyState===WebSocket.OPEN || polymarketWS.readyState===WebSocket.CONNECTING)){
+    updatePolymarketRealtimeDisplay();
+    return;
+  }
+
+  clearTimeout(polymarketWSReconnectTimer);
+  if(polymarketWS){
+    try{ polymarketWS.onclose=null; polymarketWS.close(); }catch(e){}
+  }
+  polymarketWSKey=key;
+
+  function connect(){
+    if(!polymarketWSConfig || polymarketWSConfig.key!==key) return;
+    try{
+      const ws=new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market");
+      polymarketWS=ws;
+
+      ws.onopen=()=>{
+        if(!polymarketWSConfig || polymarketWSConfig.key!==key){ try{ws.close();}catch(e){} return; }
+        ws.send(JSON.stringify({
+          assets_ids:[String(pm.yToken),String(pm.oToken)],
+          type:"market"
+        }));
+      };
+      ws.onmessage=e=>handlePolymarketWSMessage(e.data);
+      ws.onerror=e=>console.warn("Polymarket WebSocket error",e);
+      ws.onclose=()=>{
+        if(polymarketWS===ws) polymarketWS=null;
+        if(polymarketWSConfig && polymarketWSConfig.key===key){
+          clearTimeout(polymarketWSReconnectTimer);
+          polymarketWSReconnectTimer=setTimeout(connect,3000);
+        }
+      };
+    }catch(e){
+      console.warn("Polymarket WebSocket connection failed",e);
+      if(polymarketWSConfig && polymarketWSConfig.key===key)
+        polymarketWSReconnectTimer=setTimeout(connect,3000);
+    }
+  }
+
+  connect();
+  updatePolymarketRealtimeDisplay();
 }
 
 function updatePolymarketPredictionInfo(pm){
@@ -2192,6 +2364,7 @@ async function loadWinPrediction(g){
   if(state==="Live" || /warmup/i.test(g.status?.detailedState||"")){
     try{
       const pm=await getPolymarketGameProbability(g);
+      startPolymarketLiveStream(pm,g);
       const gs=`${g.status?.abstractGameState||""} ${g.status?.detailedState||""}`.toLowerCase();
       pm.stateLabel=/final|game over|completed/.test(gs)?"Postgame":(/live|warmup|in progress/.test(gs)?"Live":"Pregame");
       if(pm.stateLabel==="Live"){
@@ -2238,6 +2411,7 @@ async function loadWinPrediction(g){
   }
 
   if(state==="Final"){
+    stopPolymarketLiveStream();
     const yScore=Number(ySide?.score||0), oScore=Number(oSide?.score||0);
     if(yScore!==oScore){
       renderWinPrediction(
@@ -2254,6 +2428,7 @@ async function loadWinPrediction(g){
   // Prefer a live Polymarket market price before first pitch.
   try{
     const pm=await getPolymarketGameProbability(g);
+      startPolymarketLiveStream(pm,g);
       const gs=`${g.status?.abstractGameState||""} ${g.status?.detailedState||""}`.toLowerCase();
       pm.stateLabel=/final|game over|completed/.test(gs)?"Postgame":(/live|warmup|in progress/.test(gs)?"Live":"Pregame");
       if(pm.stateLabel==="Live"){
@@ -2269,6 +2444,18 @@ async function loadWinPrediction(g){
   }catch(pmErr){
     console.warn("Pregame Polymarket probability unavailable; using dashboard estimate",pmErr);
   }
+
+  // If Polymarket cannot provide a verified, non-50/50 moneyline quote,
+  // do not present a model-generated 50/50 as if it were live market data.
+  renderWinPrediction(50,50,opponentName,"PREDICTION MARKET — PREGAME","Polymarket market data unavailable");
+  const unavailableBox=$("winPrediction");
+  if(unavailableBox){
+    const pct=unavailableBox.querySelector(".win-prediction-pct");
+    if(pct) pct.textContent="MARKET DATA UNAVAILABLE";
+    const bar=unavailableBox.querySelector(".win-prediction-bar");
+    if(bar) bar.style.display="none";
+  }
+  return;
 
   // Pregame estimate built only from current MLB data already available to the dashboard.
   try{
@@ -2640,7 +2827,7 @@ async function loadPlayoffRace(){
     const divText=divRank ? `${ordinal(divRank)} in AL East` : "AL East rank unavailable";
     const gbRaw=divisionYanks.gamesBack;
     const gamesBackText=(gbRaw==="-" || gbRaw==="0" || gbRaw===0) ? "Division leader" : (gbRaw!=null ? `${gbRaw} GB` : "—");
-    const wcText=isDivisionLeader ? "Division leader" : (wcRank ? `Wild Card #${wcRank}` : "Outside current Wild Card");
+    const wcText=isDivisionLeader ? "Division leader" : (wcRank ? `#${wcRank}` : "Outside current Wild Card");
     const seedText=seed ? `#${seed} AL seed` : "Seed not currently available";
     const postseasonText=clinchedDivision ? "Division clinched" : (clinchedPlayoffs ? "Playoff berth clinched" : "Not yet clinched");
 
@@ -2648,7 +2835,7 @@ async function loadPlayoffRace(){
       <div class="playoff-grid">
         <div class="playoff-item"><span class="playoff-label">Record</span><strong>${wins}-${losses}</strong></div>
         <div class="playoff-item"><span class="playoff-label">AL East</span><strong>${divText}</strong></div>
-        <div class="playoff-item"><span class="playoff-label">Wild Card</span><strong>${wcText}</strong></div>
+        <div class="playoff-item"><span class="playoff-label">AL Wild Card</span><strong>${wcText}</strong></div>
         <div class="playoff-item"><span class="playoff-label">AL Seed</span><strong>${seedText}</strong></div>
         <div class="playoff-item"><span class="playoff-label">Games Back</span><strong>${gamesBackText}</strong></div>
       </div>
